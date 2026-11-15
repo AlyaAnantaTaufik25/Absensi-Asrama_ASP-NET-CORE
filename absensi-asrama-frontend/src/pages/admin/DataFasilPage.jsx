@@ -1,0 +1,470 @@
+import React, { useState } from "react";
+import {
+  Search,
+  Plus,
+  Edit2,
+  Trash2,
+  X,
+  Eye,
+  ChevronDown
+} from "lucide-react";
+
+export default function DataFasilPage() {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [gedungFilter, setGedungFilter] = useState("Semua Gedung");
+  const [showModal, setShowModal] = useState(false);
+  const [selectedFasil, setSelectedFasil] = useState(null);
+
+  const [fasilList, setFasilList] = useState([
+    {
+      id: 1,
+      nama: "Andi Rahman",
+      code: "FD-01",
+      email: "fasil01@asramaaman.id",
+      hp: "081267-02001",
+      gedung: "Gedung C",
+      status: "Aktif"
+    },
+    {
+      id: 2,
+      nama: "Budi Santoso",
+      code: "FD-02",
+      email: "fasil@demo.com",
+      hp: "081267-02002",
+      gedung: "Gedung A",
+      status: "Aktif"
+    },
+    {
+      id: 3,
+      nama: "Dedi Irawan",
+      code: "FD-03",
+      email: "fasil03@asramaaman.id",
+      hp: "081267-02003",
+      gedung: "Gedung E",
+      status: "Aktif"
+    },
+    {
+      id: 4,
+      nama: "Eka Prasetya",
+      code: "FD-04",
+      email: "fasil04@asramaaman.id",
+      hp: "081267-02004",
+      gedung: "Gedung F",
+      status: "Aktif"
+    },
+    {
+      id: 5,
+      nama: "Fani Handayani",
+      code: "FD-05",
+      email: "fasil05@asramaaman.id",
+      hp: "081267-02005",
+      gedung: "Gedung D",
+      status: "Aktif"
+    },
+    {
+      id: 6,
+      nama: "Gina Marlina",
+      code: "FD-06",
+      email: "fasil06@asramaaman.id",
+      hp: "081267-02006",
+      gedung: "Gedung B",
+      status: "Aktif"
+    },
+    {
+      id: 7,
+      nama: "Maya Kurnia",
+      code: "FD-07",
+      email: "fasil07@asramaaman.id",
+      hp: "081267-02007",
+      gedung: "Gedung B",
+      status: "Aktif"
+    },
+    {
+      id: 8,
+      nama: "Nurul Huda",
+      code: "FD-08",
+      email: "fasil08@asramaaman.id",
+      hp: "081267-02008",
+      gedung: "Gedung A",
+      status: "Aktif"
+    }
+  ]);
+
+  // Form State for Tambah Fasil
+  const [formData, setFormData] = useState({
+    nama: "",
+    email: "",
+    password: "",
+    hp: "",
+    gedung: "Gedung A"
+  });
+
+  const handleSave = (e) => {
+    e.preventDefault();
+    const newEntry = {
+      id: Date.now(),
+      nama: formData.nama || "Fasilitator Baru",
+      code: `FD-0${fasilList.length + 1}`,
+      email: formData.email || `fasil0${fasilList.length + 1}@asramaaman.id`,
+      hp: formData.hp || "081267-02099",
+      gedung: formData.gedung,
+      status: "Aktif"
+    };
+    setFasilList([...fasilList, newEntry]);
+    setShowModal(false);
+    setFormData({
+      nama: "",
+      email: "",
+      password: "",
+      hp: "",
+      gedung: "Gedung A"
+    });
+    alert("Data fasil baru berhasil disimpan.");
+  };
+
+  const filteredList = fasilList.filter((item) => {
+    const matchSearch =
+      item.nama.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.hp.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchGedung =
+      gedungFilter === "Semua Gedung" || item.gedung === gedungFilter;
+    return matchSearch && matchGedung;
+  });
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+      {/* 1. Header Row */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div>
+          <div
+            style={{
+              fontSize: "11px",
+              fontWeight: "800",
+              color: "#2349d4",
+              letterSpacing: "1.2px",
+              textTransform: "uppercase",
+              marginBottom: "4px"
+            }}
+          >
+            MANAJEMEN FASILITATOR
+          </div>
+          <h1
+            style={{
+              fontSize: "24px",
+              fontWeight: "800",
+              color: "#0f172a",
+              letterSpacing: "-0.4px",
+              margin: "0 0 4px 0"
+            }}
+          >
+            Data Fasil
+          </h1>
+          <p style={{ fontSize: "13.5px", color: "#64748b", margin: 0 }}>
+            Kelola fasilitator dan penugasan satu gedung.
+          </p>
+        </div>
+
+        <button
+          onClick={() => setShowModal(true)}
+          style={{
+            backgroundColor: "#2349d4",
+            border: "none",
+            color: "#ffffff",
+            fontWeight: "700",
+            fontSize: "12.5px",
+            padding: "9px 18px",
+            borderRadius: "10px",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "6px",
+            cursor: "pointer",
+            boxShadow: "0 4px 14px -2px rgba(35, 73, 212, 0.4)"
+          }}
+        >
+          <Plus size={15} />
+          Tambah
+        </button>
+      </div>
+
+      {/* 2. Content Card with Filters and Table */}
+      <div className="content-card" style={{ padding: "20px 24px" }}>
+        {/* Filters */}
+        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: "10px", marginBottom: "18px" }}>
+          {/* Search */}
+          <div style={{ position: "relative" }}>
+            <Search
+              size={15}
+              style={{
+                position: "absolute",
+                left: "12px",
+                top: "50%",
+                transform: "translateY(-50%)",
+                color: "#94a3b8"
+              }}
+            />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Cari nama atau email..."
+              style={{
+                width: "100%",
+                height: "38px",
+                paddingLeft: "36px",
+                paddingRight: "12px",
+                borderRadius: "10px",
+                border: "1px solid #e2e8f0",
+                backgroundColor: "#f8fafc",
+                fontSize: "12.5px",
+                outline: "none",
+                boxSizing: "border-box"
+              }}
+            />
+          </div>
+
+          {/* Gedung */}
+          <select
+            value={gedungFilter}
+            onChange={(e) => setGedungFilter(e.target.value)}
+            style={{ height: "38px", padding: "0 10px", borderRadius: "10px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12.5px" }}
+          >
+            <option value="Semua Gedung">Semua Gedung</option>
+            <option value="Gedung A">Gedung A</option>
+            <option value="Gedung B">Gedung B</option>
+            <option value="Gedung C">Gedung C</option>
+            <option value="Gedung D">Gedung D</option>
+            <option value="Gedung E">Gedung E</option>
+          </select>
+
+          {/* Status */}
+          <select style={{ height: "38px", padding: "0 10px", borderRadius: "10px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12.5px" }}>
+            <option value="Semua">Semua Status</option>
+            <option value="Aktif">Aktif</option>
+          </select>
+        </div>
+
+        {/* Data Table */}
+        <div className="data-table-container">
+          <table className="asrama-data-table">
+            <thead>
+              <tr>
+                <th>Nama</th>
+                <th>Email</th>
+                <th>No. HP</th>
+                <th>Gedung yang Dikelola</th>
+                <th>Status</th>
+                <th style={{ textAlign: "center" }}>Aksi</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredList.map((f) => (
+                <tr key={f.id}>
+                  <td>
+                    <div style={{ fontWeight: "700", color: "#0f172a" }}>{f.nama}</div>
+                    <div style={{ fontSize: "11px", color: "#64748b" }}>{f.code}</div>
+                  </td>
+                  <td>
+                    <span style={{ color: "#334155" }}>{f.email}</span>
+                  </td>
+                  <td>
+                    <span style={{ color: "#475569" }}>{f.hp}</span>
+                  </td>
+                  <td>
+                    <span style={{ fontWeight: "600", color: "#0f172a" }}>{f.gedung}</span>
+                  </td>
+                  <td>
+                    <span className="badge-status-green" style={{ fontSize: "11px", padding: "2px 10px" }}>
+                      ● Aktif
+                    </span>
+                  </td>
+                  <td style={{ textAlign: "center" }}>
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                      <button
+                        onClick={() => setSelectedFasil(f)}
+                        style={{
+                          backgroundColor: "#f0f6ff",
+                          border: "1px solid #bfdbfe",
+                          color: "#2349d4",
+                          fontSize: "11px",
+                          fontWeight: "700",
+                          padding: "4px 10px",
+                          borderRadius: "6px",
+                          cursor: "pointer"
+                        }}
+                      >
+                        Lihat Detail
+                      </button>
+                      <button
+                        style={{ border: "none", background: "none", color: "#64748b", cursor: "pointer", padding: "4px" }}
+                        title="Edit"
+                        onClick={() => alert(`Edit fasil: ${f.nama}`)}
+                      >
+                        <Edit2 size={14} />
+                      </button>
+                      <button
+                        style={{ border: "none", background: "none", color: "#ef4444", cursor: "pointer", padding: "4px" }}
+                        title="Hapus"
+                        onClick={() => setFasilList(fasilList.filter((x) => x.id !== f.id))}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Footer */}
+        <div className="table-pagination-row">
+          <div style={{ fontSize: "12.5px", color: "#64748b" }}>
+            {filteredList.length} data · Halaman 1 dari 1
+          </div>
+          <div className="pagination-controls">
+            <button className="page-num-btn active">1</button>
+          </div>
+        </div>
+      </div>
+
+      {/* 3. MODAL: Tambah Fasil (Screenshot 5 Left) */}
+      {showModal && (
+        <div className="modal-backdrop-overlay" onClick={() => setShowModal(false)}>
+          <div className="modal-dialog-box" style={{ maxWidth: "520px" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
+              <div>
+                <div style={{ fontSize: "11px", fontWeight: "800", color: "#2349d4", letterSpacing: "1px", textTransform: "uppercase" }}>
+                  DATA FASILITATOR
+                </div>
+                <h3 style={{ fontSize: "18px", fontWeight: "800", color: "#0f172a", margin: "2px 0 0 0" }}>
+                  Tambah Fasil
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowModal(false)}
+                style={{ border: "none", background: "#f1f5f9", borderRadius: "8px", width: "28px", height: "28px", cursor: "pointer" }}
+              >
+                <X size={16} color="#64748b" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSave} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "11.5px", fontWeight: "700", color: "#334155", marginBottom: "4px" }}>
+                    Nama Lengkap *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.nama}
+                    onChange={(e) => setFormData({ ...formData, nama: e.target.value })}
+                    placeholder="Contoh: Budi Santoso"
+                    style={{ width: "100%", height: "36px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12px", boxSizing: "border-box" }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "11.5px", fontWeight: "700", color: "#334155", marginBottom: "4px" }}>
+                    Email *
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    placeholder="fasil@asramaaman.id"
+                    style={{ width: "100%", height: "36px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12px", boxSizing: "border-box" }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "11.5px", fontWeight: "700", color: "#334155", marginBottom: "4px" }}>
+                    Password *
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    placeholder="Min. 6 karakter"
+                    style={{ width: "100%", height: "36px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12px", boxSizing: "border-box" }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "11.5px", fontWeight: "700", color: "#334155", marginBottom: "4px" }}>
+                    Nomor HP *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.hp}
+                    onChange={(e) => setFormData({ ...formData, hp: e.target.value })}
+                    placeholder="0812-XXXX-XXXX"
+                    style={{ width: "100%", height: "36px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12px", boxSizing: "border-box" }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "11.5px", fontWeight: "700", color: "#334155", marginBottom: "4px" }}>
+                  Gedung yang Dikelola *
+                </label>
+                <select
+                  value={formData.gedung}
+                  onChange={(e) => setFormData({ ...formData, gedung: e.target.value })}
+                  style={{ width: "100%", height: "36px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12px" }}
+                >
+                  <option value="Gedung A">Gedung A</option>
+                  <option value="Gedung B">Gedung B</option>
+                  <option value="Gedung C">Gedung C</option>
+                  <option value="Gedung D">Gedung D</option>
+                  <option value="Gedung E">Gedung E</option>
+                </select>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  style={{ padding: "8px 16px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#ffffff", cursor: "pointer", fontSize: "12.5px", fontWeight: "600" }}
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  style={{ padding: "8px 20px", borderRadius: "8px", border: "none", backgroundColor: "#2349d4", color: "#ffffff", cursor: "pointer", fontSize: "12.5px", fontWeight: "700" }}
+                >
+                  Simpan
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Detail Fasil */}
+      {selectedFasil && (
+        <div className="modal-backdrop-overlay" onClick={() => setSelectedFasil(null)}>
+          <div className="modal-dialog-box" style={{ maxWidth: "420px" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+              <div style={{ fontSize: "16px", fontWeight: "800", color: "#0f172a" }}>Detail Fasilitator</div>
+              <button onClick={() => setSelectedFasil(null)} style={{ border: "none", background: "#f1f5f9", borderRadius: "6px", width: "26px", height: "26px", cursor: "pointer" }}>
+                <X size={15} color="#64748b" />
+              </button>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px", fontSize: "13px" }}>
+              <div><strong>Nama:</strong> {selectedFasil.nama} ({selectedFasil.code})</div>
+              <div><strong>Email:</strong> {selectedFasil.email}</div>
+              <div><strong>No. HP:</strong> {selectedFasil.hp}</div>
+              <div><strong>Gedung yang Dikelola:</strong> {selectedFasil.gedung}</div>
+              <div><strong>Status:</strong> {selectedFasil.status}</div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
