@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Download,
   Calendar,
@@ -13,6 +13,7 @@ import {
   TrendingUp,
   UserCheck
 } from "lucide-react";
+import { getUsers, getPresensi } from "../../services/api";
 
 export default function RekapKehadiranPage() {
   const [filterSession, setFilterSession] = useState("semua"); // "semua" | "subuh" | "maghrib"
@@ -20,177 +21,58 @@ export default function RekapKehadiranPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [downloadSuccess, setDownloadSuccess] = useState(false);
+  const [studentsAttendance, setStudentsAttendance] = useState([]);
+  const [loading, setLoading] = useState(false);
 
-  const studentsAttendance = [
-    {
-      room: "B-301",
-      name: "Fikri Ramadhan",
-      nim: "2311521001",
-      subuh: "Hadir",
-      subuhTime: "04:45 WIB",
-      maghrib: "Hadir",
-      maghribTime: "18:07 WIB",
-      complianceRate: 100,
-      totalPresent: 28,
-      totalPermit: 0,
-      totalAlpha: 0,
-      statusNote: "Tepat Waktu"
-    },
-    {
-      room: "B-302",
-      name: "Yoga Prasetyo",
-      nim: "2311521002",
-      subuh: "Hadir",
-      subuhTime: "04:48 WIB",
-      maghrib: "Hadir",
-      maghribTime: "18:12 WIB",
-      complianceRate: 96,
-      totalPresent: 27,
-      totalPermit: 1,
-      totalAlpha: 0,
-      statusNote: "Tepat Waktu"
-    },
-    {
-      room: "B-303",
-      name: "Taufik Hidayat",
-      nim: "2311521003",
-      subuh: "Hadir",
-      subuhTime: "04:52 WIB",
-      maghrib: "Hadir",
-      maghribTime: "18:09 WIB",
-      complianceRate: 93,
-      totalPresent: 26,
-      totalPermit: 2,
-      totalAlpha: 0,
-      statusNote: "Izin Keluar Malam"
-    },
-    {
-      room: "B-304",
-      name: "Rayhan Pratama",
-      nim: "2311521004",
-      subuh: "Hadir",
-      subuhTime: "04:42 WIB",
-      maghrib: "Hadir",
-      maghribTime: "18:04 WIB",
-      complianceRate: 100,
-      totalPresent: 28,
-      totalPermit: 0,
-      totalAlpha: 0,
-      statusNote: "Tepat Waktu"
-    },
-    {
-      room: "B-305",
-      name: "Alvin Syahputra",
-      nim: "2311521005",
-      subuh: "Hadir",
-      subuhTime: "04:50 WIB",
-      maghrib: "Hadir",
-      maghribTime: "18:15 WIB",
-      complianceRate: 89,
-      totalPresent: 25,
-      totalPermit: 2,
-      totalAlpha: 1,
-      statusNote: "Kegiatan UKM"
-    },
-    {
-      room: "B-306",
-      name: "Rendy Kusuma",
-      nim: "2311521006",
-      subuh: "Hadir",
-      subuhTime: "04:47 WIB",
-      maghrib: "Hadir",
-      maghribTime: "18:21 WIB",
-      complianceRate: 96,
-      totalPresent: 27,
-      totalPermit: 1,
-      totalAlpha: 0,
-      statusNote: "Tepat Waktu"
-    },
-    {
-      room: "B-307",
-      name: "Irfan Maulana",
-      nim: "2311521007",
-      subuh: "Hadir",
-      subuhTime: "04:51 WIB",
-      maghrib: "Izin",
-      maghribTime: "Izin Sakit",
-      complianceRate: 86,
-      totalPresent: 24,
-      totalPermit: 4,
-      totalAlpha: 0,
-      statusNote: "Izin Sakit di Kamar"
-    },
-    {
-      room: "B-308",
-      name: "Dimas Aditya",
-      nim: "2311521008",
-      subuh: "Hadir",
-      subuhTime: "04:44 WIB",
-      maghrib: "Hadir",
-      maghribTime: "18:10 WIB",
-      complianceRate: 100,
-      totalPresent: 28,
-      totalPermit: 0,
-      totalAlpha: 0,
-      statusNote: "Tepat Waktu"
-    },
-    {
-      room: "B-309",
-      name: "Gilang Permana",
-      nim: "2311521009",
-      subuh: "Hadir",
-      subuhTime: "04:49 WIB",
-      maghrib: "Hadir",
-      maghribTime: "18:18 WIB",
-      complianceRate: 93,
-      totalPresent: 26,
-      totalPermit: 2,
-      totalAlpha: 0,
-      statusNote: "Izin Beli Obat"
-    },
-    {
-      room: "B-310",
-      name: "Hasan Basri",
-      nim: "2311521010",
-      subuh: "Hadir",
-      subuhTime: "04:40 WIB",
-      maghrib: "Hadir",
-      maghribTime: "18:03 WIB",
-      complianceRate: 100,
-      totalPresent: 28,
-      totalPermit: 0,
-      totalAlpha: 0,
-      statusNote: "Tepat Waktu"
-    },
-    {
-      room: "B-311",
-      name: "Farid Ramli",
-      nim: "2311521011",
-      subuh: "Hadir",
-      subuhTime: "04:54 WIB",
-      maghrib: "Hadir",
-      maghribTime: "18:25 WIB",
-      complianceRate: 93,
-      totalPresent: 26,
-      totalPermit: 2,
-      totalAlpha: 0,
-      statusNote: "Izin Rapat Panitia"
-    },
-    {
-      room: "B-312",
-      name: "Wahyu Setiawan",
-      nim: "2311521012",
-      subuh: "Hadir",
-      subuhTime: "04:55 WIB",
-      maghrib: "Belum",
-      maghribTime: "Belum Tercatat",
-      complianceRate: 82,
-      totalPresent: 23,
-      totalPermit: 2,
-      totalAlpha: 3,
-      statusNote: "Perlu Verifikasi"
+  useEffect(() => {
+    async function loadData() {
+      try {
+        setLoading(true);
+        const [users, presensi] = await Promise.all([getUsers(), getPresensi()]);
+        if (Array.isArray(users)) {
+          const penghuni = users.filter(
+            (u) => u.role?.toLowerCase() === "penghuni" || u.role?.toLowerCase() === "mahasiswa"
+          );
+          const mapped = penghuni.map((u) => {
+            const userPresensi = Array.isArray(presensi)
+              ? presensi.filter((p) => p.idUser === u.idUser)
+              : [];
+            const hadirCount = userPresensi.filter((p) => p.status === "Hadir").length;
+            const izinCount = userPresensi.filter((p) => p.status === "Izin").length;
+            const alphaCount = userPresensi.filter((p) => p.status === "Alpha").length;
+            const total = hadirCount + izinCount + alphaCount;
+            const rate = total > 0 ? Math.round((hadirCount / total) * 100) : 0;
+            const latest = userPresensi[0];
+
+            return {
+              room: u.nomorKamar || "Asrama",
+              name: u.nama,
+              nim: u.nim,
+              subuh: latest?.status === "Hadir" ? "Hadir" : "Belum",
+              subuhTime: latest?.waktu
+                ? new Date(latest.waktu).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) + " WIB"
+                : "Belum Tercatat",
+              maghrib: latest?.status === "Hadir" ? "Hadir" : "Belum",
+              maghribTime: latest?.waktu
+                ? new Date(latest.waktu).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) + " WIB"
+                : "Belum Tercatat",
+              complianceRate: rate,
+              totalPresent: hadirCount,
+              totalPermit: izinCount,
+              totalAlpha: alphaCount,
+              statusNote: latest ? latest.status : "Belum Ada Catatan"
+            };
+          });
+          setStudentsAttendance(mapped);
+        }
+      } catch (err) {
+        console.warn("Gagal memuat rekap kehadiran:", err);
+      } finally {
+        setLoading(false);
+      }
     }
-  ];
+    loadData();
+  }, []);
 
   const handleExport = () => {
     setDownloadSuccess(true);
@@ -460,7 +342,14 @@ export default function RekapKehadiranPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredData.map((row, index) => {
+              {filteredData.length === 0 ? (
+                <tr>
+                  <td colSpan={6} style={{ textAlign: "center", padding: "40px", color: "#94a3b8", fontSize: "13px" }}>
+                    Belum ada data kehadiran santri di database.
+                  </td>
+                </tr>
+              ) : (
+                filteredData.map((row, index) => {
                 const subuhOk = row.subuh === "Hadir";
                 const maghribOk = row.maghrib === "Hadir";
                 const maghribIzin = row.maghrib === "Izin";
@@ -582,7 +471,8 @@ export default function RekapKehadiranPage() {
                     </td>
                   </tr>
                 );
-              })}
+              })
+            )}
             </tbody>
           </table>
         </div>

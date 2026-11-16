@@ -121,7 +121,7 @@ app.MapGet("/api/users", async (ApplicationDbContext db) =>
             u.NomorKamar,
             u.JenisKelamin,
             u.Email,
-            u.Role
+            Role = (u.Role != null && u.Role.ToLower() == "mahasiswa") ? "penghuni" : (u.Role ?? "penghuni")
         })
         .ToListAsync();
     return Results.Ok(users);
@@ -155,20 +155,46 @@ app.MapPost("/api/users", async (CreateUserRequest request, ApplicationDbContext
         return Results.Conflict(new { message = "Email sudah terdaftar." });
     }
 
+    if (!string.IsNullOrWhiteSpace(request.NomorKamar))
+    {
+        var kamarExists = await db.Kamars.AnyAsync(k => k.NoKamar == request.NomorKamar);
+        if (!kamarExists)
+        {
+            var defaultGedung = await db.Gedungs.FirstOrDefaultAsync();
+            if (defaultGedung == null)
+            {
+                defaultGedung = new Gedung { NamaGedung = "Asrama Hijau", IdUser = 1 };
+                db.Gedungs.Add(defaultGedung);
+                await db.SaveChangesAsync();
+            }
+            db.Kamars.Add(new Kamar { NoKamar = request.NomorKamar, Lantai = 1, IdGedung = defaultGedung.IdGedung });
+            await db.SaveChangesAsync();
+        }
+    }
+
     var user = new User
     {
         Nama = request.Nama,
         Nim = request.Nim,
         Asal = request.Asal,
-        NomorKamar = request.NomorKamar,
+        NomorKamar = string.IsNullOrWhiteSpace(request.NomorKamar) ? null : request.NomorKamar,
         JenisKelamin = request.JenisKelamin,
         Email = request.Email,
-        Role = request.Role
+        Role = (string.IsNullOrWhiteSpace(request.Role) || request.Role.Trim().ToLower() == "mahasiswa")
+            ? "penghuni"
+            : request.Role.Trim().ToLower()
     };
     var passwordHasher = new Microsoft.AspNetCore.Identity.PasswordHasher<User>();
     user.Password = passwordHasher.HashPassword(user, request.Password);
     db.Users.Add(user);
-    await db.SaveChangesAsync();
+    try
+    {
+        await db.SaveChangesAsync();
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Gagal menyimpan ke database: {ex.Message}", statusCode: 500);
+    }
 
     return Results.Created("/api/users", new
     {
@@ -182,6 +208,52 @@ app.MapPost("/api/users", async (CreateUserRequest request, ApplicationDbContext
         user.Email,
         user.Role
     });
+});
+
+app.MapPut("/api/users/{id:int}", async (int id, UpdateUserRequest request, ApplicationDbContext db) =>
+{
+    var user = await db.Users.FindAsync(id);
+    if (user == null) return Results.NotFound(new { message = "Pengguna tidak ditemukan." });
+
+    if (!string.IsNullOrWhiteSpace(request.Nama)) user.Nama = request.Nama;
+    if (!string.IsNullOrWhiteSpace(request.Nim)) user.Nim = request.Nim;
+    if (!string.IsNullOrWhiteSpace(request.Asal)) user.Asal = request.Asal;
+    if (request.NomorKamar != null) user.NomorKamar = request.NomorKamar;
+    if (!string.IsNullOrWhiteSpace(request.JenisKelamin)) user.JenisKelamin = request.JenisKelamin;
+    if (!string.IsNullOrWhiteSpace(request.Email)) user.Email = request.Email;
+    if (!string.IsNullOrWhiteSpace(request.Role)) user.Role = request.Role.ToLower();
+    if (!string.IsNullOrWhiteSpace(request.Password))
+    {
+        var passwordHasher = new Microsoft.AspNetCore.Identity.PasswordHasher<User>();
+        user.Password = passwordHasher.HashPassword(user, request.Password);
+    }
+
+    await db.SaveChangesAsync();
+    return Results.Ok(new { message = "Pengguna berhasil diperbarui.", user });
+});
+
+app.MapDelete("/api/users/{id:int}", async (int id, ApplicationDbContext db) =>
+{
+    var user = await db.Users.FindAsync(id);
+    if (user == null) return Results.NotFound(new { message = "Pengguna tidak ditemukan." });
+
+    var presensis = await db.Presensis.Where(p => p.IdUser == id).ToListAsync();
+    db.Presensis.RemoveRange(presensis);
+
+    var perizinans = await db.Perizinans.Where(p => p.Nim == user.Nim).ToListAsync();
+    db.Perizinans.RemoveRange(perizinans);
+
+    var managedGedungs = await db.Gedungs.Where(g => g.IdUser == id).ToListAsync();
+    var fallbackAdmin = await db.Users.FirstOrDefaultAsync(u => u.Role == "admin" && u.IdUser != id);
+    int fallbackId = fallbackAdmin?.IdUser ?? 1;
+    foreach (var g in managedGedungs)
+    {
+        g.IdUser = fallbackId;
+    }
+
+    db.Users.Remove(user);
+    await db.SaveChangesAsync();
+    return Results.Ok(new { message = "Pengguna berhasil dihapus." });
 });
 
 // -------------------------------------------------
@@ -219,36 +291,155 @@ app.MapPost("/api/presensi", async (CreatePresensiRequest req, ApplicationDbCont
 // -------------------------------------------------
 app.MapGet("/api/gedung", async (ApplicationDbContext db) =>
 {
-    var list = await db.Gedungs
-        .Join(db.Users,
-            g => g.IdUser,
-            u => u.IdUser,
-            (g, u) => new
-            {
-                g.IdGedung,
-                g.NamaGedung,
-                g.IdUser,
-                NamaFasil = u.Nama
-            })
-        .ToListAsync();
+    var list = await (from g in db.Gedungs
+                      join u in db.Users on g.IdUser equals u.IdUser into userGroup
+                      from u in userGroup.DefaultIfEmpty()
+                      select new
+                      {
+                          g.IdGedung,
+                          g.NamaGedung,
+                          g.IdUser,
+                          NamaFasil = u != null ? u.Nama : "-"
+                      }).ToListAsync();
     return Results.Ok(list);
 });
 
 app.MapPost("/api/gedung", async (CreateGedungRequest req, ApplicationDbContext db) =>
 {
-    var gedung = new Gedung { NamaGedung = req.NamaGedung, IdUser = req.IdUser };
+    int assignedUserId = req.IdUser.GetValueOrDefault();
+
+    if (assignedUserId <= 0 && !string.IsNullOrWhiteSpace(req.NamaFasil))
+    {
+        var existingFasil = await db.Users.FirstOrDefaultAsync(u => u.Nama.ToLower() == req.NamaFasil.Trim().ToLower());
+        if (existingFasil != null)
+        {
+            assignedUserId = existingFasil.IdUser;
+        }
+        else
+        {
+            var cleanEmail = req.NamaFasil.Trim().ToLower().Replace(" ", ".") + "@mynava.id";
+            var newFasil = new User
+            {
+                Nama = req.NamaFasil.Trim(),
+                Nim = $"FASIL-{Random.Shared.Next(1000, 9999)}",
+                Asal = "Padang",
+                JenisKelamin = "Laki-laki",
+                Email = cleanEmail,
+                Role = "fasil"
+            };
+            var passwordHasher = new Microsoft.AspNetCore.Identity.PasswordHasher<User>();
+            newFasil.Password = passwordHasher.HashPassword(newFasil, "asrama123");
+            db.Users.Add(newFasil);
+            await db.SaveChangesAsync();
+            assignedUserId = newFasil.IdUser;
+        }
+    }
+
+    if (assignedUserId <= 0)
+    {
+        var firstUser = await db.Users.FirstOrDefaultAsync();
+        assignedUserId = firstUser?.IdUser ?? 1;
+    }
+
+    var gedung = new Gedung { NamaGedung = req.NamaGedung, IdUser = assignedUserId };
     db.Gedungs.Add(gedung);
     await db.SaveChangesAsync();
+
+    int jumlahLantai = req.JumlahLantai.GetValueOrDefault(1);
+    int kamarPerLantai = req.KamarPerLantai.GetValueOrDefault(0);
+    if (jumlahLantai > 0 && kamarPerLantai > 0)
+    {
+        var prefix = req.NamaGedung.Trim();
+        if (prefix.ToLower().StartsWith("gedung ")) prefix = prefix.Substring(7).Trim();
+        if (string.IsNullOrEmpty(prefix)) prefix = "A";
+
+        for (int l = 1; l <= jumlahLantai; l++)
+        {
+            for (int k = 1; k <= kamarPerLantai; k++)
+            {
+                var noKamar = $"{prefix}-{l}{k:D02}";
+                if (!await db.Kamars.AnyAsync(km => km.NoKamar == noKamar))
+                {
+                    db.Kamars.Add(new Kamar { NoKamar = noKamar, Lantai = l, IdGedung = gedung.IdGedung });
+                }
+            }
+        }
+        await db.SaveChangesAsync();
+    }
+
     return Results.Created($"/api/gedung/{gedung.IdGedung}", gedung);
+});
+
+app.MapPut("/api/gedung/{id:int}", async (int id, CreateGedungRequest req, ApplicationDbContext db) =>
+{
+    var gedung = await db.Gedungs.FindAsync(id);
+    if (gedung == null) return Results.NotFound(new { message = "Gedung tidak ditemukan." });
+    if (!string.IsNullOrWhiteSpace(req.NamaGedung)) gedung.NamaGedung = req.NamaGedung;
+    if (req.IdUser.HasValue && req.IdUser.Value > 0)
+    {
+        gedung.IdUser = req.IdUser.Value;
+    }
+    else if (!string.IsNullOrWhiteSpace(req.NamaFasil))
+    {
+        var existingFasil = await db.Users.FirstOrDefaultAsync(u => u.Nama.ToLower() == req.NamaFasil.Trim().ToLower());
+        if (existingFasil != null)
+        {
+            gedung.IdUser = existingFasil.IdUser;
+        }
+        else
+        {
+            var cleanEmail = req.NamaFasil.Trim().ToLower().Replace(" ", ".") + "@mynava.id";
+            var newFasil = new User
+            {
+                Nama = req.NamaFasil.Trim(),
+                Nim = $"FASIL-{Random.Shared.Next(1000, 9999)}",
+                Asal = "Padang",
+                JenisKelamin = "Laki-laki",
+                Email = cleanEmail,
+                Role = "fasil"
+            };
+            var passwordHasher = new Microsoft.AspNetCore.Identity.PasswordHasher<User>();
+            newFasil.Password = passwordHasher.HashPassword(newFasil, "asrama123");
+            db.Users.Add(newFasil);
+            await db.SaveChangesAsync();
+            gedung.IdUser = newFasil.IdUser;
+        }
+    }
+
+    if (req.JumlahLantai.HasValue && req.KamarPerLantai.HasValue && req.JumlahLantai.Value > 0 && req.KamarPerLantai.Value > 0)
+    {
+        var prefix = gedung.NamaGedung.Trim();
+        if (prefix.ToLower().StartsWith("gedung ")) prefix = prefix.Substring(7).Trim();
+        if (string.IsNullOrEmpty(prefix)) prefix = "A";
+
+        for (int l = 1; l <= req.JumlahLantai.Value; l++)
+        {
+            for (int k = 1; k <= req.KamarPerLantai.Value; k++)
+            {
+                var noKamar = $"{prefix}-{l}{k:D02}";
+                if (!await db.Kamars.AnyAsync(km => km.NoKamar == noKamar))
+                {
+                    db.Kamars.Add(new Kamar { NoKamar = noKamar, Lantai = l, IdGedung = gedung.IdGedung });
+                }
+            }
+        }
+    }
+
+    await db.SaveChangesAsync();
+    return Results.Ok(new { message = "Gedung berhasil diperbarui.", gedung });
 });
 
 app.MapDelete("/api/gedung/{id:int}", async (int id, ApplicationDbContext db) =>
 {
     var gedung = await db.Gedungs.FindAsync(id);
     if (gedung == null) return Results.NotFound(new { message = "Gedung tidak ditemukan." });
+
+    var relatedKamars = await db.Kamars.Where(k => k.IdGedung == id).ToListAsync();
+    db.Kamars.RemoveRange(relatedKamars);
+
     db.Gedungs.Remove(gedung);
     await db.SaveChangesAsync();
-    return Results.Ok(new { message = "Gedung berhasil dihapus." });
+    return Results.Ok(new { message = "Gedung dan kamar terkait berhasil dihapus." });
 });
 
 // -------------------------------------------------
@@ -256,18 +447,16 @@ app.MapDelete("/api/gedung/{id:int}", async (int id, ApplicationDbContext db) =>
 // -------------------------------------------------
 app.MapGet("/api/kamar", async (ApplicationDbContext db) =>
 {
-    var list = await db.Kamars
-        .Join(db.Gedungs,
-            k => k.IdGedung,
-            g => g.IdGedung,
-            (k, g) => new
-            {
-                k.NoKamar,
-                k.Lantai,
-                k.IdGedung,
-                NamaGedung = g.NamaGedung
-            })
-        .ToListAsync();
+    var list = await (from k in db.Kamars
+                      join g in db.Gedungs on k.IdGedung equals g.IdGedung into gedungGroup
+                      from g in gedungGroup.DefaultIfEmpty()
+                      select new
+                      {
+                          k.NoKamar,
+                          k.Lantai,
+                          k.IdGedung,
+                          NamaGedung = g != null ? g.NamaGedung : "-"
+                      }).ToListAsync();
     return Results.Ok(list);
 });
 
@@ -281,6 +470,16 @@ app.MapPost("/api/kamar", async (CreateKamarRequest req, ApplicationDbContext db
     return Results.Created($"/api/kamar/{kamar.NoKamar}", kamar);
 });
 
+app.MapPut("/api/kamar/{noKamar}", async (string noKamar, CreateKamarRequest req, ApplicationDbContext db) =>
+{
+    var kamar = await db.Kamars.FindAsync(noKamar);
+    if (kamar == null) return Results.NotFound(new { message = "Kamar tidak ditemukan." });
+    if (req.Lantai > 0) kamar.Lantai = req.Lantai;
+    if (req.IdGedung > 0) kamar.IdGedung = req.IdGedung;
+    await db.SaveChangesAsync();
+    return Results.Ok(new { message = "Kamar berhasil diperbarui.", kamar });
+});
+
 app.MapDelete("/api/kamar/{noKamar}", async (string noKamar, ApplicationDbContext db) =>
 {
     var kamar = await db.Kamars.FindAsync(noKamar);
@@ -288,6 +487,106 @@ app.MapDelete("/api/kamar/{noKamar}", async (string noKamar, ApplicationDbContex
     db.Kamars.Remove(kamar);
     await db.SaveChangesAsync();
     return Results.Ok(new { message = "Kamar berhasil dihapus." });
+});
+
+// -------------------------------------------------
+// Dashboard Stats
+// -------------------------------------------------
+app.MapGet("/api/stats", async (ApplicationDbContext db) =>
+{
+    var totalPenghuni = await db.Users.CountAsync(u => u.Role == "penghuni" || u.Role == "mahasiswa");
+    var totalFasil = await db.Users.CountAsync(u => u.Role == "fasil");
+    var totalGedung = await db.Gedungs.CountAsync();
+    var totalKamar = await db.Kamars.CountAsync();
+
+    var today = DateTime.Today;
+    var presensiHariIni = await db.Presensis.CountAsync(p => p.Tanggal == today && p.Status == "Hadir");
+    var totalPresensiHariIni = await db.Presensis.CountAsync(p => p.Tanggal == today);
+
+    var attendanceRate = totalPenghuni > 0
+        ? Math.Round(((double)presensiHariIni / totalPenghuni) * 100, 1)
+        : (totalPresensiHariIni > 0 ? Math.Round(((double)presensiHariIni / totalPresensiHariIni) * 100, 1) : 0);
+
+    return Results.Ok(new
+    {
+        totalPenghuni,
+        totalFasil,
+        totalGedung,
+        totalKamar,
+        presensiHariIni,
+        attendanceRate
+    });
+});
+
+// -------------------------------------------------
+// Seed Initial Data (Gedung, Kamar, Demo Users)
+// -------------------------------------------------
+app.MapPost("/api/seed", async (ApplicationDbContext db) =>
+{
+    var passwordHasher = new Microsoft.AspNetCore.Identity.PasswordHasher<User>();
+
+    if (!await db.Users.AnyAsync(u => u.Email == "admin@demo.com"))
+    {
+        var admin = new User
+        {
+            Nama = "Admin Pusat",
+            Nim = "ADM-99",
+            Asal = "Padang",
+            JenisKelamin = "Laki-laki",
+            Email = "admin@demo.com",
+            Role = "admin"
+        };
+        admin.Password = passwordHasher.HashPassword(admin, "asrama");
+        db.Users.Add(admin);
+    }
+
+    if (!await db.Users.AnyAsync(u => u.Email == "fasil@demo.com"))
+    {
+        var fasil = new User
+        {
+            Nama = "Kak Alif Rahman",
+            Nim = "FASIL-01",
+            Asal = "Bukittinggi",
+            JenisKelamin = "Laki-laki",
+            Email = "fasil@demo.com",
+            Role = "fasil"
+        };
+        fasil.Password = passwordHasher.HashPassword(fasil, "asrama");
+        db.Users.Add(fasil);
+    }
+
+    if (!await db.Users.AnyAsync(u => u.Email == "penghuni@demo.com"))
+    {
+        var penghuni = new User
+        {
+            Nama = "Alya Ananta",
+            Nim = "2311523005",
+            Asal = "Padang",
+            JenisKelamin = "Perempuan",
+            Email = "penghuni@demo.com",
+            Role = "penghuni"
+        };
+        penghuni.Password = passwordHasher.HashPassword(penghuni, "asrama");
+        db.Users.Add(penghuni);
+    }
+    await db.SaveChangesAsync();
+
+    if (!await db.Gedungs.AnyAsync())
+    {
+        var fasilUser = await db.Users.FirstOrDefaultAsync(u => u.Role == "fasil") ?? await db.Users.FirstAsync();
+        var g1 = new Gedung { NamaGedung = "Asrama Hijau", IdUser = fasilUser.IdUser };
+        var g2 = new Gedung { NamaGedung = "Gedung Al-Farabi", IdUser = fasilUser.IdUser };
+        db.Gedungs.AddRange(g1, g2);
+        await db.SaveChangesAsync();
+
+        var k1 = new Kamar { NoKamar = "A-101", Lantai = 1, IdGedung = g1.IdGedung };
+        var k2 = new Kamar { NoKamar = "B-302", Lantai = 3, IdGedung = g1.IdGedung };
+        var k3 = new Kamar { NoKamar = "AF-201", Lantai = 2, IdGedung = g2.IdGedung };
+        db.Kamars.AddRange(k1, k2, k3);
+        await db.SaveChangesAsync();
+    }
+
+    return Results.Ok(new { success = true, message = "Seed data awal berhasil dijalankan." });
 });
 
 // -------------------------------------------------
@@ -343,6 +642,15 @@ app.MapGet("/api/auth/hash", (string password) =>
     });
 });
 
+// Auto-normalize legacy roles ('mahasiswa' -> 'penghuni') in database on startup
+try
+{
+    using var scope = app.Services.CreateScope();
+    var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    await dbContext.Database.ExecuteSqlRawAsync("UPDATE user SET role = 'penghuni' WHERE role = 'mahasiswa' OR role IS NULL OR role = ''");
+}
+catch { }
+
 app.MapFallbackToFile("index.html");
 app.Run();
 
@@ -396,7 +704,24 @@ public record CreateUserRequest(
     string Email,
     string Password,
     string Role);
-public record CreateGedungRequest(string NamaGedung, int IdUser);
+public record CreateGedungRequest(
+    string NamaGedung,
+    int? IdUser,
+    string? NamaFasil,
+    int? JumlahLantai,
+    int? KamarPerLantai,
+    double? Latitude,
+    double? Longitude,
+    int? Radius);
 public record CreateKamarRequest(string NoKamar, int Lantai, int IdGedung);
 public record CreatePresensiRequest(int IdUser, string? Status, double? Latitude, double? Longitude, string? Keterangan, string? FotoWajah);
 public record CreatePerizinanRequest(string Nim, DateTime Tanggal, string Alasan, string? FileBukti);
+public record UpdateUserRequest(
+    string? Nama,
+    string? Nim,
+    string? Asal,
+    string? NomorKamar,
+    string? JenisKelamin,
+    string? Email,
+    string? Password,
+    string? Role);

@@ -1,26 +1,69 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { ChevronRight } from "lucide-react";
+import { getUsers, getPresensi, getPerizinan } from "../../services/api";
 
-export default function FasilDashboardPage({ setActiveTab }) {
+export default function FasilDashboardPage({ user, setActiveTab }) {
+  const [fasilStats, setFasilStats] = useState({
+    hadir: 0,
+    izin: 0,
+    belum: 0,
+    total: 0,
+    kepatuhan: "0%"
+  });
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const [users, presensi, izin] = await Promise.all([
+          getUsers(),
+          getPresensi(),
+          getPerizinan()
+        ]);
+        const penghuniCount = Array.isArray(users)
+          ? users.filter((u) => u.role === "penghuni" || u.role === "mahasiswa").length
+          : 0;
+        const hadirCount = Array.isArray(presensi)
+          ? presensi.filter((p) => p.status === "Hadir").length
+          : 0;
+        const izinCount = Array.isArray(izin) ? izin.length : 0;
+        const belumCount = Math.max(0, penghuniCount - hadirCount - izinCount);
+        const rate = penghuniCount > 0
+          ? ((hadirCount / penghuniCount) * 100).toFixed(1) + "%"
+          : "0%";
+
+        setFasilStats({
+          hadir: hadirCount,
+          izin: izinCount,
+          belum: belumCount,
+          total: penghuniCount,
+          kepatuhan: rate
+        });
+      } catch (err) {
+        console.warn("Gagal memuat statistik fasil:", err);
+      }
+    }
+    loadData();
+  }, []);
+
   const scheduleItems = [
     {
       time: "04:00",
       title: "Verifikasi presensi Subuh",
-      desc: "12 penghuni terverifikasi",
+      desc: `${fasilStats.hadir} penghuni terverifikasi`,
       status: "Selesai",
       statusType: "success"
     },
     {
       time: "19:00",
       title: "Verifikasi presensi Maghrib & Isya",
-      desc: "1 penghuni belum tercatat",
-      status: "Selesai",
-      statusType: "success"
+      desc: `${fasilStats.belum} penghuni belum tercatat`,
+      status: fasilStats.belum > 0 ? "Berlangsung" : "Selesai",
+      statusType: fasilStats.belum > 0 ? "active" : "success"
     },
     {
       time: "20:30",
-      title: "Rekapitulasi kehadiran lantai 3",
-      desc: "Sesi Maghrib & Isya ditutup",
+      title: "Rekapitulasi kehadiran santri",
+      desc: "Sinkronisasi kehadiran dengan database MySQL",
       status: "Berlangsung",
       statusType: "active"
     },
@@ -30,53 +73,37 @@ export default function FasilDashboardPage({ setActiveTab }) {
       desc: "Gerbang asrama ditutup pukul 22:00",
       status: "Menunggu",
       statusType: "waiting"
-    },
-    {
-      time: "23:30",
-      title: "Verifikasi izin darurat malam",
-      desc: "Log kepulangan santri & toleransi waktu",
-      status: "Menunggu",
-      statusType: "waiting"
-    },
-    {
-      time: "03:30",
-      title: "Persiapan presensi Subuh",
-      desc: "Pengaturan sesi sholat berjamaah",
-      status: "Menunggu",
-      statusType: "waiting"
     }
   ];
 
-  const actionItems = [
-    {
+  const actionItems = [];
+  if (fasilStats.belum > 0) {
+    actionItems.push({
       id: "presensi",
-      title: "1 penghuni belum presensi",
-      desc: "Wahyu Setiawan (B-312), sesi Maghrib & Isya sudah ditutup.",
+      title: `${fasilStats.belum} penghuni belum presensi`,
+      desc: "Silakan verifikasi manual kehadiran santri yang bersangkutan.",
       actionLabel: "Catat manual",
       targetTab: "presensi"
-    },
-    {
+    });
+  }
+  if (fasilStats.izin > 0) {
+    actionItems.push({
       id: "izin",
-      title: "2 izin darurat menunggu",
-      desc: "Taufik (B-303) dan Gilang (B-309) meminta keluar malam ini.",
+      title: `${fasilStats.izin} perizinan tercatat`,
+      desc: "Pengajuan izin santri tersimpan di database MySQL.",
       actionLabel: "Tinjau",
       targetTab: "izin"
-    },
-    {
-      id: "keluar-masuk",
-      title: "1 penghuni masih di luar",
-      desc: "Farid Ramli (B-311), estimasi kembali 23:45.",
-      actionLabel: "Lihat catatan",
-      targetTab: "keluar-masuk"
-    },
-    {
-      id: "laporan",
-      title: "1 laporan masih terbuka",
-      desc: "Suara bising setelah jam malam, lorong Lt. 3.",
-      actionLabel: "Buka laporan",
-      targetTab: "laporan"
-    }
-  ];
+    });
+  }
+  if (actionItems.length === 0) {
+    actionItems.push({
+      id: "selesai",
+      title: "Semua pemantauan terkini aman",
+      desc: "Tidak ada presensi tertunda atau laporan darurat baru.",
+      actionLabel: "Lihat rekap",
+      targetTab: "rekap"
+    });
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
@@ -85,7 +112,7 @@ export default function FasilDashboardPage({ setActiveTab }) {
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "4px" }}>
             <h1 style={{ fontSize: "24px", fontWeight: "800", color: "#0f172a", margin: 0, letterSpacing: "-0.5px" }}>
-              Selamat malam, Kak Alif
+              Selamat datang, {user?.name || "Fasilitator"}
             </h1>
             <span
               style={{
@@ -145,41 +172,41 @@ export default function FasilDashboardPage({ setActiveTab }) {
         {/* Stat 1 */}
         <div style={{ borderRight: "1px solid #f1f5f9", paddingRight: "16px" }}>
           <div style={{ fontSize: "12.5px", color: "#64748b", marginBottom: "6px", fontWeight: "500" }}>
-            Hadir Maghrib & Isya
+            Hadir Terverifikasi
           </div>
           <div style={{ display: "flex", alignItems: "baseline", gap: "4px" }}>
-            <span style={{ fontSize: "28px", fontWeight: "800", color: "#15803d" }}>10</span>
-            <span style={{ fontSize: "14px", color: "#94a3b8", fontWeight: "600" }}>/12</span>
+            <span style={{ fontSize: "28px", fontWeight: "800", color: "#15803d" }}>{fasilStats.hadir}</span>
+            <span style={{ fontSize: "14px", color: "#94a3b8", fontWeight: "600" }}>/{fasilStats.total}</span>
           </div>
         </div>
 
         {/* Stat 2 */}
         <div style={{ borderRight: "1px solid #f1f5f9", paddingRight: "16px", paddingLeft: "8px" }}>
           <div style={{ fontSize: "12.5px", color: "#64748b", marginBottom: "6px", fontWeight: "500" }}>
-            Izin
+            Izin Tercatat
           </div>
           <div style={{ fontSize: "28px", fontWeight: "800", color: "#2563eb" }}>
-            1
+            {fasilStats.izin}
           </div>
         </div>
 
         {/* Stat 3 */}
         <div style={{ borderRight: "1px solid #f1f5f9", paddingRight: "16px", paddingLeft: "8px" }}>
           <div style={{ fontSize: "12.5px", color: "#64748b", marginBottom: "6px", fontWeight: "500" }}>
-            Belum presensi
+            Belum Presensi
           </div>
           <div style={{ fontSize: "28px", fontWeight: "800", color: "#ea580c" }}>
-            1
+            {fasilStats.belum}
           </div>
         </div>
 
         {/* Stat 4 */}
         <div style={{ paddingLeft: "8px" }}>
           <div style={{ fontSize: "12.5px", color: "#64748b", marginBottom: "6px", fontWeight: "500" }}>
-            Tingkat Kepatuhan
+            Tingkat Kehadiran
           </div>
           <div style={{ display: "flex", alignItems: "baseline", gap: "4px" }}>
-            <span style={{ fontSize: "28px", fontWeight: "800", color: "#15803d" }}>91.7%</span>
+            <span style={{ fontSize: "28px", fontWeight: "800", color: "#15803d" }}>{fasilStats.kepatuhan}</span>
           </div>
         </div>
       </div>

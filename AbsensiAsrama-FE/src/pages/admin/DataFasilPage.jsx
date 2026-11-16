@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Search,
   Plus,
@@ -8,89 +8,47 @@ import {
   Eye,
   ChevronDown
 } from "lucide-react";
+import { getUsers, createUser, updateUser, deleteUser } from "../../services/api";
 
 export default function DataFasilPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [gedungFilter, setGedungFilter] = useState("Semua Gedung");
   const [showModal, setShowModal] = useState(false);
+  const [editingFasil, setEditingFasil] = useState(null);
   const [selectedFasil, setSelectedFasil] = useState(null);
+  const [fasilList, setFasilList] = useState([]);
+  const [loading, setLoading] = useState(false);
 
-  const [fasilList, setFasilList] = useState([
-    {
-      id: 1,
-      nama: "Andi Rahman",
-      code: "FD-01",
-      email: "fasil01@asramaaman.id",
-      hp: "081267-02001",
-      gedung: "Gedung C",
-      status: "Aktif"
-    },
-    {
-      id: 2,
-      nama: "Budi Santoso",
-      code: "FD-02",
-      email: "fasil@demo.com",
-      hp: "081267-02002",
-      gedung: "Gedung A",
-      status: "Aktif"
-    },
-    {
-      id: 3,
-      nama: "Dedi Irawan",
-      code: "FD-03",
-      email: "fasil03@asramaaman.id",
-      hp: "081267-02003",
-      gedung: "Gedung E",
-      status: "Aktif"
-    },
-    {
-      id: 4,
-      nama: "Eka Prasetya",
-      code: "FD-04",
-      email: "fasil04@asramaaman.id",
-      hp: "081267-02004",
-      gedung: "Gedung F",
-      status: "Aktif"
-    },
-    {
-      id: 5,
-      nama: "Fani Handayani",
-      code: "FD-05",
-      email: "fasil05@asramaaman.id",
-      hp: "081267-02005",
-      gedung: "Gedung D",
-      status: "Aktif"
-    },
-    {
-      id: 6,
-      nama: "Gina Marlina",
-      code: "FD-06",
-      email: "fasil06@asramaaman.id",
-      hp: "081267-02006",
-      gedung: "Gedung B",
-      status: "Aktif"
-    },
-    {
-      id: 7,
-      nama: "Maya Kurnia",
-      code: "FD-07",
-      email: "fasil07@asramaaman.id",
-      hp: "081267-02007",
-      gedung: "Gedung B",
-      status: "Aktif"
-    },
-    {
-      id: 8,
-      nama: "Nurul Huda",
-      code: "FD-08",
-      email: "fasil08@asramaaman.id",
-      hp: "081267-02008",
-      gedung: "Gedung A",
-      status: "Aktif"
+  const loadFasil = async () => {
+    try {
+      setLoading(true);
+      const data = await getUsers();
+      if (Array.isArray(data)) {
+        const filtered = data.filter((u) => u.role?.toLowerCase() === "fasil");
+        setFasilList(
+          filtered.map((u, idx) => ({
+            id: u.idUser,
+            nama: u.nama,
+            code: u.nim || `FD-0${idx + 1}`,
+            email: u.email,
+            hp: "081267-02001",
+            gedung: u.nomorKamar || "Gedung Asrama",
+            status: "Aktif"
+          }))
+        );
+      }
+    } catch (e) {
+      console.warn("Gagal memuat fasil:", e);
+    } finally {
+      setLoading(false);
     }
-  ]);
+  };
 
-  // Form State for Tambah Fasil
+  useEffect(() => {
+    loadFasil();
+  }, []);
+
+  // Form State for Tambah/Edit Fasil
   const [formData, setFormData] = useState({
     nama: "",
     email: "",
@@ -99,19 +57,8 @@ export default function DataFasilPage() {
     gedung: "Gedung A"
   });
 
-  const handleSave = (e) => {
-    e.preventDefault();
-    const newEntry = {
-      id: Date.now(),
-      nama: formData.nama || "Fasilitator Baru",
-      code: `FD-0${fasilList.length + 1}`,
-      email: formData.email || `fasil0${fasilList.length + 1}@asramaaman.id`,
-      hp: formData.hp || "081267-02099",
-      gedung: formData.gedung,
-      status: "Aktif"
-    };
-    setFasilList([...fasilList, newEntry]);
-    setShowModal(false);
+  const handleOpenTambah = () => {
+    setEditingFasil(null);
     setFormData({
       nama: "",
       email: "",
@@ -119,7 +66,72 @@ export default function DataFasilPage() {
       hp: "",
       gedung: "Gedung A"
     });
-    alert("Data fasil baru berhasil disimpan.");
+    setShowModal(true);
+  };
+
+  const handleOpenEdit = (f) => {
+    setEditingFasil(f.id);
+    setFormData({
+      nama: f.nama,
+      email: f.email,
+      password: "",
+      hp: f.hp || "",
+      gedung: f.gedung || "Gedung A"
+    });
+    setShowModal(true);
+  };
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    const payload = {
+      nama: formData.nama.trim(),
+      email: formData.email.trim(),
+      nomorKamar: formData.gedung,
+      role: "fasil"
+    };
+
+    if (formData.password.trim()) {
+      payload.password = formData.password.trim();
+    } else if (!editingFasil) {
+      payload.password = "asrama123";
+    }
+
+    try {
+      const res = editingFasil
+        ? await updateUser(editingFasil, payload)
+        : await createUser({
+            ...payload,
+            nim: `FASIL-${Date.now().toString().slice(-4)}`,
+            asal: "Padang",
+            jenisKelamin: "Laki-laki"
+          });
+
+      if (res.ok) {
+        alert(editingFasil ? "Data Fasilitator berhasil diperbarui di database!" : "Data Fasilitator berhasil ditambahkan ke database!");
+        setShowModal(false);
+        setEditingFasil(null);
+        await loadFasil();
+      } else {
+        alert("Gagal menyimpan fasil: " + (res.data?.message || "Terjadi kesalahan."));
+      }
+    } catch (err) {
+      alert("Error: " + err.message);
+    }
+  };
+
+  const handleDelete = async (id, nama) => {
+    if (!window.confirm(`Yakin ingin menghapus fasilitator ${nama || ""} dari database?`)) return;
+    try {
+      const res = await deleteUser(id);
+      if (res.ok) {
+        alert("Fasilitator berhasil dihapus.");
+        await loadFasil();
+      } else {
+        alert("Gagal menghapus fasilitator: " + (res.data?.message || "Terjadi kesalahan."));
+      }
+    } catch (err) {
+      alert("Error: " + err.message);
+    }
   };
 
   const filteredList = fasilList.filter((item) => {
@@ -166,7 +178,7 @@ export default function DataFasilPage() {
         </div>
 
         <button
-          onClick={() => setShowModal(true)}
+          onClick={handleOpenTambah}
           style={{
             backgroundColor: "#2349d4",
             border: "none",
@@ -297,15 +309,15 @@ export default function DataFasilPage() {
                       </button>
                       <button
                         style={{ border: "none", background: "none", color: "#64748b", cursor: "pointer", padding: "4px" }}
-                        title="Edit"
-                        onClick={() => alert(`Edit fasil: ${f.nama}`)}
+                        title="Edit Fasilitator"
+                        onClick={() => handleOpenEdit(f)}
                       >
                         <Edit2 size={14} />
                       </button>
                       <button
                         style={{ border: "none", background: "none", color: "#ef4444", cursor: "pointer", padding: "4px" }}
-                        title="Hapus"
-                        onClick={() => setFasilList(fasilList.filter((x) => x.id !== f.id))}
+                        title="Hapus Fasilitator"
+                        onClick={() => handleDelete(f.id, f.nama)}
                       >
                         <Trash2 size={14} />
                       </button>
@@ -338,7 +350,7 @@ export default function DataFasilPage() {
                   DATA FASILITATOR
                 </div>
                 <h3 style={{ fontSize: "18px", fontWeight: "800", color: "#0f172a", margin: "2px 0 0 0" }}>
-                  Tambah Fasil
+                  {editingFasil ? "Edit Data Fasilitator" : "Tambah Fasil"}
                 </h3>
               </div>
               <button
@@ -373,7 +385,7 @@ export default function DataFasilPage() {
                     required
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    placeholder="fasil@asramaaman.id"
+                    placeholder="fasil@mynava.id"
                     style={{ width: "100%", height: "36px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12px", boxSizing: "border-box" }}
                   />
                 </div>
@@ -382,24 +394,23 @@ export default function DataFasilPage() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
                 <div>
                   <label style={{ display: "block", fontSize: "11.5px", fontWeight: "700", color: "#334155", marginBottom: "4px" }}>
-                    Password *
+                    Password {editingFasil ? "(Kosongkan jika tidak diubah)" : "*"}
                   </label>
                   <input
                     type="password"
-                    required
+                    required={!editingFasil}
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    placeholder="Min. 6 karakter"
+                    placeholder={editingFasil ? "Kosongkan jika tidak diubah" : "Min. 6 karakter"}
                     style={{ width: "100%", height: "36px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12px", boxSizing: "border-box" }}
                   />
                 </div>
                 <div>
                   <label style={{ display: "block", fontSize: "11.5px", fontWeight: "700", color: "#334155", marginBottom: "4px" }}>
-                    Nomor HP *
+                    Nomor HP
                   </label>
                   <input
                     type="text"
-                    required
                     value={formData.hp}
                     onChange={(e) => setFormData({ ...formData, hp: e.target.value })}
                     placeholder="0812-XXXX-XXXX"
@@ -422,6 +433,8 @@ export default function DataFasilPage() {
                   <option value="Gedung C">Gedung C</option>
                   <option value="Gedung D">Gedung D</option>
                   <option value="Gedung E">Gedung E</option>
+                  <option value="Asrama Hijau">Asrama Hijau</option>
+                  <option value="Gedung Al-Farabi">Gedung Al-Farabi</option>
                 </select>
               </div>
 
@@ -437,7 +450,7 @@ export default function DataFasilPage() {
                   type="submit"
                   style={{ padding: "8px 20px", borderRadius: "8px", border: "none", backgroundColor: "#2349d4", color: "#ffffff", cursor: "pointer", fontSize: "12.5px", fontWeight: "700" }}
                 >
-                  Simpan
+                  {editingFasil ? "Simpan Perubahan" : "Simpan Fasilitator"}
                 </button>
               </div>
             </form>

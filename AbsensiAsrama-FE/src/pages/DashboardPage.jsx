@@ -48,10 +48,6 @@ export default function DashboardPage({ user, setActiveTab }) {
   const totalSesi = totalHadir + totalIzin + totalAlpha;
   const percentage = totalSesi > 0 ? ((totalHadir / totalSesi) * 100).toFixed(1) + " %" : "0 %";
 
-  // If there is no data in DB, render nothing
-  if (!isLoading && presensiList.length === 0 && izinList.length === 0) {
-    return null;
-  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>

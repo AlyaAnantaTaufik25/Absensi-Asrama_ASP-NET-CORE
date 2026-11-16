@@ -1,66 +1,55 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Check, X, Clock, AlertCircle } from "lucide-react";
+import { getPerizinan, getUsers } from "../../services/api";
 
 export default function IzinDaruratPage({ onCountChange }) {
   const [filterTab, setFilterTab] = useState("menunggu"); // "menunggu" | "selesai"
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(false);
 
-  const [requests, setRequests] = useState([
-    {
-      id: "ID-01",
-      name: "Taufik Hidayat",
-      room: "Kamar B-303",
-      timeSubmitted: "20:48",
-      purpose: "Mengantar teman ke IGD",
-      destination: "RS Kota",
-      estimatedReturn: "23:00 WIB",
-      status: "menunggu", // "menunggu" | "disetujui" | "ditolak"
-      statusLabel: "Menunggu"
-    },
-    {
-      id: "ID-02",
-      name: "Gilang Permana",
-      room: "Kamar B-309",
-      timeSubmitted: "20:55",
-      purpose: "Membeli obat",
-      destination: "Apotek 24 jam",
-      estimatedReturn: "21:45 WIB",
-      status: "menunggu",
-      statusLabel: "Menunggu"
-    },
-    {
-      id: "ID-03",
-      name: "Farid Ramli",
-      room: "Kamar B-311",
-      timeSubmitted: "19:40",
-      purpose: "Rapat panitia darurat",
-      destination: "Gedung PKM",
-      estimatedReturn: "23:45 WIB",
-      status: "disetujui",
-      statusLabel: "Disetujui"
-    },
-    {
-      id: "ID-04",
-      name: "Rendy Kusuma",
-      room: "Kamar B-306",
-      timeSubmitted: "19:15",
-      purpose: "Nongkrong di kafe",
-      destination: "Kopi Kenangan",
-      estimatedReturn: "23:00 WIB",
-      status: "ditolak",
-      statusLabel: "Ditolak",
-      rejectReason: "Bukan keperluan darurat/medis."
+  useEffect(() => {
+    async function loadData() {
+      try {
+        setLoading(true);
+        const [izinList, userList] = await Promise.all([getPerizinan(), getUsers()]);
+        if (Array.isArray(izinList)) {
+          const mapped = izinList.map((item) => {
+            const user = Array.isArray(userList) ? userList.find((u) => u.nim === item.nim) : null;
+            return {
+              id: `IZIN-${item.idIzin}`,
+              name: user?.nama || `Mahasiswa (NIM: ${item.nim})`,
+              room: user?.nomorKamar ? `Kamar ${user.nomorKamar}` : "Kamar Asrama",
+              timeSubmitted: item.tanggal
+                ? new Date(item.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "short" })
+                : "-",
+              purpose: item.alasan || "Keperluan Perizinan",
+              destination: item.fileBukti ? `Bukti: ${item.fileBukti}` : "Asrama",
+              estimatedReturn: "Sesuai Jadwal",
+              status: "menunggu",
+              statusLabel: "Menunggu"
+            };
+          });
+          setRequests(mapped);
+          if (onCountChange) onCountChange(mapped.length);
+        }
+      } catch (err) {
+        console.warn("Gagal memuat izin darurat:", err);
+      } finally {
+        setLoading(false);
+      }
     }
-  ]);
+    loadData();
+  }, []);
 
   const handleAction = (id, newStatus) => {
     setRequests((prev) =>
       prev.map((r) =>
         r.id === id
           ? {
-              ...r,
-              status: newStatus,
-              statusLabel: newStatus === "disetujui" ? "Disetujui" : "Ditolak"
-            }
+            ...r,
+            status: newStatus,
+            statusLabel: newStatus === "disetujui" ? "Disetujui" : "Ditolak"
+          }
           : r
       )
     );
@@ -173,14 +162,14 @@ export default function IzinDaruratPage({ onCountChange }) {
                         item.status === "menunggu"
                           ? "#fef3c7"
                           : item.status === "disetujui"
-                          ? "#dcfce7"
-                          : "#fee2e2",
+                            ? "#dcfce7"
+                            : "#fee2e2",
                       color:
                         item.status === "menunggu"
                           ? "#b45309"
                           : item.status === "disetujui"
-                          ? "#15803d"
-                          : "#b91c1c"
+                            ? "#15803d"
+                            : "#b91c1c"
                     }}
                   >
                     {item.statusLabel}

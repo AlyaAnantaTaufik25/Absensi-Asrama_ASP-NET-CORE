@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Search,
   Plus,
@@ -8,127 +8,158 @@ import {
   Eye,
   ChevronDown
 } from "lucide-react";
+import { getUsers, createUser, updateUser, deleteUser, getGedung, getKamar } from "../../services/api";
 
 export default function DataPenghuniPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [gedungFilter, setGedungFilter] = useState("Semua Gedung");
   const [statusFilter, setStatusFilter] = useState("Semua Status");
   const [showModal, setShowModal] = useState(false);
+  const [editingPenghuni, setEditingPenghuni] = useState(null);
   const [selectedPenghuni, setSelectedPenghuni] = useState(null);
+  const [penghuniList, setPenghuniList] = useState([]);
+  const [availableGedung, setAvailableGedung] = useState([]);
+  const [availableKamar, setAvailableKamar] = useState([]);
+  const [loading, setLoading] = useState(false);
 
-  const [penghuniList, setPenghuniList] = useState([
-    {
-      id: 1,
-      nama: "Akhmad Fauzan",
-      email: "penghuni01@asramaaman.id",
-      nim: "23115201",
-      jk: "L",
-      lokasi: "Gedung B / 1 / B-104",
-      status: "Aktif"
-    },
-    {
-      id: 2,
-      nama: "Alya Nur Rahmah",
-      email: "penghuni02@asramaaman.id",
-      nim: "23115202",
-      jk: "P",
-      lokasi: "Gedung A / 2 / A-201",
-      status: "Aktif"
-    },
-    {
-      id: 3,
-      nama: "Annisa Setiawan",
-      email: "penghuni03@asramaaman.id",
-      nim: "23115203",
-      jk: "L",
-      lokasi: "Gedung C / 1 / C-102",
-      status: "Aktif"
-    },
-    {
-      id: 4,
-      nama: "Anntoni Fitriani",
-      email: "penghuni04@asramaaman.id",
-      nim: "23115204",
-      jk: "P",
-      lokasi: "Gedung C / 2 / C-202",
-      status: "Aktif"
-    },
-    {
-      id: 5,
-      nama: "Arif Hidayat",
-      email: "penghuni05@asramaaman.id",
-      nim: "23115205",
-      jk: "L",
-      lokasi: "Gedung A / 1 / A-103",
-      status: "Aktif"
-    },
-    {
-      id: 6,
-      nama: "Asrul Maharani",
-      email: "penghuni06@asramaaman.id",
-      nim: "23115206",
-      jk: "P",
-      lokasi: "Gedung A / 1 / A-101",
-      status: "Nonaktif"
-    },
-    {
-      id: 7,
-      nama: "Bagas Wicaksana",
-      email: "penghuni07@asramaaman.id",
-      nim: "23115207",
-      jk: "L",
-      lokasi: "Gedung B / 1 / B-104",
-      status: "Aktif"
-    },
-    {
-      id: 8,
-      nama: "Bimo Arya",
-      email: "penghuni08@asramaaman.id",
-      nim: "23115208",
-      jk: "L",
-      lokasi: "Gedung B / 2 / B-201",
-      status: "Aktif"
+  const loadPenghuni = async () => {
+    try {
+      setLoading(true);
+      const data = await getUsers();
+      if (Array.isArray(data)) {
+        const filtered = data.filter(
+          (u) => u.role?.toLowerCase() === "penghuni" || u.role?.toLowerCase() === "mahasiswa"
+        );
+        setPenghuniList(
+          filtered.map((u) => {
+            const rawRoom = u.nomorKamar || "A-101";
+            const parts = rawRoom.split("-");
+            const gedungPrefix = parts[0] || "A";
+            const lantaiNumber = parts[1] ? parts[1].charAt(0) : "1";
+
+            return {
+              id: u.idUser,
+              nama: u.nama,
+              email: u.email,
+              nim: u.nim,
+              asal: u.asal || "Padang",
+              jk: u.jenisKelamin?.toLowerCase().startsWith("p") ? "P" : "L",
+              gedung: `Gedung ${gedungPrefix}`,
+              lantai: lantaiNumber,
+              kamar: rawRoom,
+              lokasi: `Kamar ${rawRoom}`,
+              status: "Aktif"
+            };
+          })
+        );
+      }
+    } catch (e) {
+      console.warn("Gagal memuat penghuni:", e);
+    } finally {
+      setLoading(false);
     }
-  ]);
+  };
+
+  useEffect(() => {
+    loadPenghuni();
+    getGedung().then((g) => { if (Array.isArray(g)) setAvailableGedung(g); });
+    getKamar().then((k) => { if (Array.isArray(k)) setAvailableKamar(k); });
+  }, []);
 
   // Form State
   const [formData, setFormData] = useState({
     nama: "",
     nim: "",
-    asal: "",
+    asal: "Padang",
     jk: "L",
     email: "",
     password: "",
     gedung: "Gedung A",
-    lantai: "Lantai 1",
+    lantai: "1",
     kamar: "A-101"
   });
 
-  const handleSave = (e) => {
-    e.preventDefault();
-    const newEntry = {
-      id: Date.now(),
-      nama: formData.nama || "Penghuni Baru",
-      email: formData.email || `${formData.nim}@asramaaman.id`,
-      nim: formData.nim || "23115299",
-      jk: formData.jk,
-      lokasi: `${formData.gedung} / ${formData.lantai.replace("Lantai ", "")} / ${formData.kamar}`,
-      status: "Aktif"
-    };
-    setPenghuniList([newEntry, ...penghuniList]);
-    setShowModal(false);
+  const handleOpenTambah = () => {
+    setEditingPenghuni(null);
     setFormData({
       nama: "",
       nim: "",
-      asal: "",
+      asal: "Padang",
       jk: "L",
       email: "",
       password: "",
-      gedung: "Gedung A",
-      lantai: "Lantai 1",
-      kamar: "A-101"
+      gedung: availableGedung[0]?.namaGedung || "Gedung A",
+      lantai: "1",
+      kamar: availableKamar[0]?.noKamar || "A-101"
     });
-    alert("Data penghuni baru berhasil disimpan.");
+    setShowModal(true);
+  };
+
+  const handleOpenEdit = (p) => {
+    setEditingPenghuni(p.id);
+    setFormData({
+      nama: p.nama,
+      nim: p.nim,
+      asal: p.asal || "Padang",
+      jk: p.jk,
+      email: p.email,
+      password: "",
+      gedung: p.gedung,
+      lantai: String(p.lantai || "1"),
+      kamar: p.kamar
+    });
+    setShowModal(true);
+  };
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    const payload = {
+      nama: formData.nama.trim(),
+      nim: formData.nim.trim(),
+      asal: formData.asal || "Padang",
+      nomorKamar: formData.kamar.trim(),
+      jenisKelamin: formData.jk === "P" ? "Perempuan" : "Laki-laki",
+      email: formData.email.trim() || `${formData.nim.trim()}@mynava.id`,
+      role: "penghuni"
+    };
+
+    if (formData.password.trim()) {
+      payload.password = formData.password.trim();
+    } else if (!editingPenghuni) {
+      payload.password = "asrama123";
+    }
+
+    try {
+      const res = editingPenghuni
+        ? await updateUser(editingPenghuni, payload)
+        : await createUser(payload);
+
+      if (res.ok) {
+        alert(editingPenghuni ? "Data penghuni berhasil diperbarui di database!" : "Data penghuni berhasil ditambahkan ke database!");
+        setShowModal(false);
+        setEditingPenghuni(null);
+        await loadPenghuni();
+      } else {
+        alert("Gagal menyimpan penghuni: " + (res.data?.message || "Terjadi kesalahan."));
+      }
+    } catch (err) {
+      alert("Error: " + err.message);
+    }
+  };
+
+  const handleDelete = async (id, nama) => {
+    if (!window.confirm(`Yakin ingin menghapus ${nama || "penghuni ini"} dari database MySQL?`)) return;
+    try {
+      const res = await deleteUser(id);
+      if (res.ok) {
+        alert("Penghuni berhasil dihapus.");
+        await loadPenghuni();
+      } else {
+        alert("Gagal menghapus penghuni: " + (res.data?.message || "Terjadi kesalahan."));
+      }
+    } catch (err) {
+      alert("Error: " + err.message);
+    }
   };
 
   const filteredList = penghuniList.filter((item) => {
@@ -177,7 +208,7 @@ export default function DataPenghuniPage() {
         </div>
 
         <button
-          onClick={() => setShowModal(true)}
+          onClick={handleOpenTambah}
           style={{
             backgroundColor: "#2349d4",
             border: "none",
@@ -331,15 +362,15 @@ export default function DataPenghuniPage() {
                       </button>
                       <button
                         style={{ border: "none", background: "none", color: "#64748b", cursor: "pointer", padding: "4px" }}
-                        title="Edit"
-                        onClick={() => alert(`Edit penghuni: ${p.nama}`)}
+                        title="Edit Penghuni"
+                        onClick={() => handleOpenEdit(p)}
                       >
                         <Edit2 size={14} />
                       </button>
                       <button
                         style={{ border: "none", background: "none", color: "#ef4444", cursor: "pointer", padding: "4px" }}
-                        title="Hapus"
-                        onClick={() => setPenghuniList(penghuniList.filter((x) => x.id !== p.id))}
+                        title="Hapus Penghuni"
+                        onClick={() => handleDelete(p.id, p.nama)}
                       >
                         <Trash2 size={14} />
                       </button>
@@ -372,7 +403,7 @@ export default function DataPenghuniPage() {
                   DATA PENGHUNI
                 </div>
                 <h3 style={{ fontSize: "18px", fontWeight: "800", color: "#0f172a", margin: "2px 0 0 0" }}>
-                  Tambah Penghuni
+                  {editingPenghuni ? "Edit Data Penghuni" : "Tambah Penghuni"}
                 </h3>
               </div>
               <button
@@ -457,34 +488,52 @@ export default function DataPenghuniPage() {
                 </div>
                 <div>
                   <label style={{ display: "block", fontSize: "11.5px", fontWeight: "700", color: "#334155", marginBottom: "3px" }}>
-                    Password *
+                    Password {editingPenghuni ? "(Kosongkan jika tidak diubah)" : "*"}
                   </label>
                   <input
                     type="password"
-                    required
+                    required={!editingPenghuni}
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    placeholder="Min. 6 karakter"
+                    placeholder={editingPenghuni ? "Kosongkan jika tidak diubah" : "Min. 6 karakter"}
                     style={{ width: "100%", height: "36px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12px", boxSizing: "border-box" }}
                   />
                 </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px" }}>
+              {/* Input Gedung, Lantai, dan Kamar */}
+              <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr", gap: "10px" }}>
                 <div>
                   <label style={{ display: "block", fontSize: "11.5px", fontWeight: "700", color: "#334155", marginBottom: "3px" }}>
-                    Gedung *
+                    Gedung Asrama *
                   </label>
                   <select
                     value={formData.gedung}
-                    onChange={(e) => setFormData({ ...formData, gedung: e.target.value })}
+                    onChange={(e) => {
+                      const selectedGedung = e.target.value;
+                      const matchingKamars = availableKamar.filter((k) => k.namaGedung === selectedGedung);
+                      setFormData({
+                        ...formData,
+                        gedung: selectedGedung,
+                        kamar: matchingKamars[0]?.noKamar || formData.kamar
+                      });
+                    }}
                     style={{ width: "100%", height: "36px", padding: "0 8px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12px" }}
                   >
-                    <option value="Gedung A">Gedung A</option>
-                    <option value="Gedung B">Gedung B</option>
-                    <option value="Gedung C">Gedung C</option>
+                    {availableGedung.length > 0 ? (
+                      availableGedung.map((g) => (
+                        <option key={g.idGedung} value={g.namaGedung}>{g.namaGedung}</option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="Gedung A">Gedung A</option>
+                        <option value="Gedung B">Gedung B</option>
+                        <option value="Asrama Hijau">Asrama Hijau</option>
+                      </>
+                    )}
                   </select>
                 </div>
+
                 <div>
                   <label style={{ display: "block", fontSize: "11.5px", fontWeight: "700", color: "#334155", marginBottom: "3px" }}>
                     Lantai *
@@ -494,23 +543,34 @@ export default function DataPenghuniPage() {
                     onChange={(e) => setFormData({ ...formData, lantai: e.target.value })}
                     style={{ width: "100%", height: "36px", padding: "0 8px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12px" }}
                   >
-                    <option value="Lantai 1">Lantai 1</option>
-                    <option value="Lantai 2">Lantai 2</option>
+                    <option value="1">Lantai 1</option>
+                    <option value="2">Lantai 2</option>
+                    <option value="3">Lantai 3</option>
+                    <option value="4">Lantai 4</option>
+                    <option value="5">Lantai 5</option>
                   </select>
                 </div>
+
                 <div>
                   <label style={{ display: "block", fontSize: "11.5px", fontWeight: "700", color: "#334155", marginBottom: "3px" }}>
-                    Kamar *
+                    Nomor Kamar *
                   </label>
-                  <select
+                  <input
+                    type="text"
+                    list="kamar-list-dropdown"
+                    required
                     value={formData.kamar}
                     onChange={(e) => setFormData({ ...formData, kamar: e.target.value })}
-                    style={{ width: "100%", height: "36px", padding: "0 8px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12px" }}
-                  >
-                    <option value="A-101">A-101</option>
-                    <option value="A-102">A-102</option>
-                    <option value="B-104">B-104</option>
-                  </select>
+                    placeholder="Contoh: A-101"
+                    style={{ width: "100%", height: "36px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12px", boxSizing: "border-box" }}
+                  />
+                  <datalist id="kamar-list-dropdown">
+                    {availableKamar.map((k) => (
+                      <option key={k.noKamar} value={k.noKamar}>
+                        {k.noKamar} ({k.namaGedung})
+                      </option>
+                    ))}
+                  </datalist>
                 </div>
               </div>
 
@@ -526,7 +586,7 @@ export default function DataPenghuniPage() {
                   type="submit"
                   style={{ padding: "8px 20px", borderRadius: "8px", border: "none", backgroundColor: "#2349d4", color: "#ffffff", cursor: "pointer", fontSize: "12.5px", fontWeight: "700" }}
                 >
-                  Simpan
+                  {editingPenghuni ? "Simpan Perubahan" : "Simpan Penghuni"}
                 </button>
               </div>
             </form>

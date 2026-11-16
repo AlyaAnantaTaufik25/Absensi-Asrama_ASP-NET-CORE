@@ -2,14 +2,14 @@ import React, { useState, useEffect } from "react";
 import {
   Search,
   KeyRound,
-  Shield,
   Trash2,
+  Edit2,
+  X,
   Lock,
-  Unlock,
-  CheckCircle2,
-  X
+  UserCheck,
+  ShieldCheck
 } from "lucide-react";
-import { getUsers } from "../../services/api";
+import { getUsers, updateUser, deleteUser } from "../../services/api";
 
 export default function AkunPenggunaPage() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -19,36 +19,104 @@ export default function AkunPenggunaPage() {
   const [accounts, setAccounts] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // If no accounts loaded and not loading, render nothing
-  if (!isLoading && accounts.length === 0) {
-    return null;
-  }
-  // Muat data user dari backend jika server aktif
-  useEffect(() => {
-    async function loadBackendUsers() {
-      setIsLoading(true);
-      try {
-        const dbUsers = await getUsers();
-        if (Array.isArray(dbUsers)) {
-          setAccounts(
-            dbUsers.map((u, idx) => ({
+  // Edit Modal State
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editForm, setEditForm] = useState({
+    id: null,
+    nama: "",
+    email: "",
+    role: "Penghuni",
+    password: ""
+  });
+
+  const loadBackendUsers = async () => {
+    setIsLoading(true);
+    try {
+      const dbUsers = await getUsers();
+      if (Array.isArray(dbUsers)) {
+        setAccounts(
+          dbUsers.map((u, idx) => {
+            const rawRole = (u.role || "").trim().toLowerCase();
+            let roleFormatted = "Penghuni";
+            if (rawRole === "admin") roleFormatted = "Admin";
+            else if (rawRole === "fasil") roleFormatted = "Fasil";
+            else roleFormatted = "Penghuni";
+
+            return {
               id: u.idUser || idx + 1,
               nama: u.nama,
               email: u.email,
-              role: u.role ? u.role.charAt(0).toUpperCase() + u.role.slice(1) : "Penghuni",
-              status: "Aktif",
-              lastLogin: "Terdaftar di MySQL"
-            }))
-          );
-        }
-      } catch (err) {
-        console.warn("Gagal mengambil data user:", err);
-      } finally {
-        setIsLoading(false);
+              role: roleFormatted,
+              status: "Aktif"
+            };
+          })
+        );
       }
+    } catch (err) {
+      console.warn("Gagal mengambil data user:", err);
+    } finally {
+      setIsLoading(false);
     }
+  };
+
+  useEffect(() => {
     loadBackendUsers();
   }, []);
+
+  const handleOpenEdit = (acc) => {
+    setEditForm({
+      id: acc.id,
+      nama: acc.nama,
+      email: acc.email,
+      role: acc.role,
+      password: ""
+    });
+    setShowEditModal(true);
+  };
+
+  const handleSaveEdit = async (e) => {
+    e.preventDefault();
+    try {
+      const payload = {
+        nama: editForm.nama.trim(),
+        email: editForm.email.trim(),
+        role: editForm.role.toLowerCase()
+      };
+      if (editForm.password.trim()) {
+        if (editForm.password.trim().length < 6) {
+          alert("Kata sandi baru minimal 6 karakter.");
+          return;
+        }
+        payload.password = editForm.password.trim();
+      }
+
+      const res = await updateUser(editForm.id, payload);
+      if (res.ok) {
+        alert("Akun dan peran pengguna berhasil diperbarui di database!");
+        setShowEditModal(false);
+        await loadBackendUsers();
+      } else {
+        alert("Gagal memperbarui akun: " + (res.data?.message || "Terjadi kesalahan."));
+      }
+    } catch (err) {
+      alert("Error: " + err.message);
+    }
+  };
+
+  const handleDelete = async (id, nama) => {
+    if (!window.confirm(`Yakin ingin menghapus akun ${nama} secara permanen dari database MySQL?`)) return;
+    try {
+      const res = await deleteUser(id);
+      if (res.ok) {
+        alert("Akun berhasil dihapus dari database!");
+        await loadBackendUsers();
+      } else {
+        alert("Gagal menghapus akun: " + (res.data?.message || "Terjadi kesalahan."));
+      }
+    } catch (err) {
+      alert("Error: " + err.message);
+    }
+  };
 
   const filteredAccounts = accounts.filter((acc) => {
     const matchSearch =
@@ -89,7 +157,7 @@ export default function AkunPenggunaPage() {
           Akun Pengguna
         </h1>
         <p style={{ fontSize: "13.5px", color: "#64748b", margin: 0 }}>
-          Satu pusat pengelolaan akun Penghuni, Fasil, dan Admin.
+          Pusat pengelolaan akun, reset kata sandi, dan hak akses Penghuni, Fasil, serta Admin.
         </p>
       </div>
 
@@ -149,7 +217,6 @@ export default function AkunPenggunaPage() {
           >
             <option value="Semua Status">Semua Status</option>
             <option value="Aktif">Aktif</option>
-            <option value="Terkunci">Terkunci</option>
           </select>
         </div>
 
@@ -162,14 +229,13 @@ export default function AkunPenggunaPage() {
                 <th>Email</th>
                 <th>Role</th>
                 <th>Status</th>
-                <th>Terakhir Login</th>
                 <th style={{ textAlign: "center" }}>Aksi</th>
               </tr>
             </thead>
             <tbody>
               {filteredAccounts.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ textAlign: "center", padding: "48px 16px", color: "#94a3b8" }}>
+                  <td colSpan={5} style={{ textAlign: "center", padding: "48px 16px", color: "#94a3b8" }}>
                     <KeyRound size={36} style={{ margin: "0 auto 10px", color: "#cbd5e1" }} />
                     <div style={{ fontSize: "14px", fontWeight: "700", color: "#475569" }}>
                       Belum Ada Akun Pengguna di Database
@@ -189,19 +255,17 @@ export default function AkunPenggunaPage() {
                       <span style={{ color: "#334155" }}>{a.email}</span>
                     </td>
                     <td>
-                      {a.role === "Penghuni" && (
-                        <span className="badge-status-blue" style={{ fontSize: "11px", padding: "2px 8px" }}>
-                          Penghuni
-                        </span>
-                      )}
-                      {a.role === "Fasil" && (
+                      {a.role === "Fasil" ? (
                         <span style={{ backgroundColor: "#e0e7ff", color: "#4338ca", fontSize: "11px", fontWeight: "700", padding: "2px 8px", borderRadius: "9999px" }}>
                           Fasil
                         </span>
-                      )}
-                      {a.role === "Admin" && (
+                      ) : a.role === "Admin" ? (
                         <span className="badge-status-amber" style={{ fontSize: "11px", padding: "2px 8px" }}>
                           Admin
+                        </span>
+                      ) : (
+                        <span className="badge-status-blue" style={{ fontSize: "11px", padding: "2px 8px" }}>
+                          Penghuni
                         </span>
                       )}
                     </td>
@@ -210,29 +274,31 @@ export default function AkunPenggunaPage() {
                         ● Aktif
                       </span>
                     </td>
-                    <td>
-                      <span style={{ fontSize: "12px", color: "#64748b" }}>{a.lastLogin}</span>
-                    </td>
                     <td style={{ textAlign: "center" }}>
-                      <div style={{ display: "inline-flex", alignItems: "center", gap: "10px" }}>
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
                         <button
-                          style={{ border: "none", background: "none", color: "#64748b", cursor: "pointer", padding: "2px" }}
-                          title="Reset Kata Sandi"
-                          onClick={() => alert(`Reset kata sandi untuk ${a.nama}`)}
+                          style={{
+                            border: "none",
+                            background: "none",
+                            color: "#64748b",
+                            cursor: "pointer",
+                            padding: "4px"
+                          }}
+                          title="Edit Akun & Peran"
+                          onClick={() => handleOpenEdit(a)}
                         >
-                          <KeyRound size={15} />
+                          <Edit2 size={15} />
                         </button>
                         <button
-                          style={{ border: "none", background: "none", color: "#64748b", cursor: "pointer", padding: "2px" }}
-                          title="Ubah Hak Akses"
-                          onClick={() => alert(`Atur hak akses untuk ${a.nama}`)}
-                        >
-                          <Shield size={15} />
-                        </button>
-                        <button
-                          style={{ border: "none", background: "none", color: "#ef4444", cursor: "pointer", padding: "2px" }}
-                          title="Kunci / Hapus Akun"
-                          onClick={() => setAccounts(accounts.filter((x) => x.id !== a.id))}
+                          style={{
+                            border: "none",
+                            background: "none",
+                            color: "#ef4444",
+                            cursor: "pointer",
+                            padding: "4px"
+                          }}
+                          title="Hapus Akun"
+                          onClick={() => handleDelete(a.id, a.nama)}
                         >
                           <Trash2 size={15} />
                         </button>
@@ -255,6 +321,141 @@ export default function AkunPenggunaPage() {
           </div>
         </div>
       </div>
+
+      {/* 3. MODAL EDIT AKUN PENGGUNA & PERAN */}
+      {showEditModal && (
+        <div className="modal-backdrop-overlay" onClick={() => setShowEditModal(false)}>
+          <div className="modal-dialog-box" style={{ maxWidth: "480px" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
+              <div>
+                <div style={{ fontSize: "11px", fontWeight: "800", color: "#2349d4", letterSpacing: "1px", textTransform: "uppercase" }}>
+                  PENGELOLAAN AKUN
+                </div>
+                <h3 style={{ fontSize: "18px", fontWeight: "800", color: "#0f172a", margin: "2px 0 0 0" }}>
+                  Edit Akun & Hak Akses
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowEditModal(false)}
+                style={{ border: "none", background: "#f1f5f9", borderRadius: "8px", width: "28px", height: "28px", cursor: "pointer" }}
+              >
+                <X size={16} color="#64748b" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEdit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: "700", color: "#334155", marginBottom: "4px" }}>
+                  Nama Lengkap *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editForm.nama}
+                  onChange={(e) => setEditForm({ ...editForm, nama: e.target.value })}
+                  style={{
+                    width: "100%",
+                    height: "38px",
+                    padding: "0 12px",
+                    borderRadius: "8px",
+                    border: "1px solid #e2e8f0",
+                    backgroundColor: "#f8fafc",
+                    fontSize: "12.5px",
+                    boxSizing: "border-box"
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: "700", color: "#334155", marginBottom: "4px" }}>
+                  Email Akun *
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={editForm.email}
+                  onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                  style={{
+                    width: "100%",
+                    height: "38px",
+                    padding: "0 12px",
+                    borderRadius: "8px",
+                    border: "1px solid #e2e8f0",
+                    backgroundColor: "#f8fafc",
+                    fontSize: "12.5px",
+                    boxSizing: "border-box"
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: "700", color: "#334155", marginBottom: "4px" }}>
+                  Peran / Hak Akses Akun *
+                </label>
+                <select
+                  value={editForm.role}
+                  onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
+                  style={{
+                    width: "100%",
+                    height: "38px",
+                    padding: "0 12px",
+                    borderRadius: "8px",
+                    border: "1px solid #e2e8f0",
+                    backgroundColor: "#f8fafc",
+                    fontSize: "12.5px",
+                    boxSizing: "border-box"
+                  }}
+                >
+                  <option value="Penghuni">Penghuni (Mahasiswa)</option>
+                  <option value="Fasil">Fasil (Fasilitator Asrama)</option>
+                  <option value="Admin">Admin (Administrator)</option>
+                </select>
+                <p style={{ fontSize: "11px", color: "#64748b", margin: "4px 0 0 0" }}>
+                  Mengubah peran di sini akan langsung mengatur hak akses pengguna pada sistem.
+                </p>
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: "700", color: "#334155", marginBottom: "4px" }}>
+                  Kata Sandi Baru (Opsional)
+                </label>
+                <input
+                  type="password"
+                  value={editForm.password}
+                  onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
+                  placeholder="Kosongkan jika tidak ingin mengubah password"
+                  style={{
+                    width: "100%",
+                    height: "38px",
+                    padding: "0 12px",
+                    borderRadius: "8px",
+                    border: "1px solid #e2e8f0",
+                    backgroundColor: "#f8fafc",
+                    fontSize: "12.5px",
+                    boxSizing: "border-box"
+                  }}
+                />
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "8px" }}>
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  style={{ padding: "8px 16px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#ffffff", cursor: "pointer", fontSize: "12.5px", fontWeight: "600" }}
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  style={{ padding: "8px 22px", borderRadius: "8px", border: "none", backgroundColor: "#2349d4", color: "#ffffff", cursor: "pointer", fontSize: "12.5px", fontWeight: "700" }}
+                >
+                  Simpan Perubahan
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

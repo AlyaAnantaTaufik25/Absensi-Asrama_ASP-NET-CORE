@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Search, CheckCircle2, ChevronDown, RotateCcw } from "lucide-react";
-import { getUsers } from "../../services/api";
+import { getUsers, updateUser } from "../../services/api";
 
 export default function HakAksesPage() {
   const buildingsList = [
@@ -22,14 +22,22 @@ export default function HakAksesPage() {
         const dbUsers = await getUsers();
         if (Array.isArray(dbUsers)) {
           setUsers(
-            dbUsers.map((u, idx) => ({
-              id: u.idUser || idx + 1,
-              name: u.nama,
-              email: u.email,
-              currentRole: u.role ? u.role.charAt(0).toUpperCase() + u.role.slice(1) : "Penghuni",
-              newRole: u.role ? u.role.charAt(0).toUpperCase() + u.role.slice(1) : "Penghuni",
-              assignedBuilding: u.role === "fasil" ? "Gedung Al-Farabi" : "Tidak diperlukan"
-            }))
+            dbUsers.map((u, idx) => {
+              const rawRole = (u.role || "").trim().toLowerCase();
+              let formatted = "Penghuni";
+              if (rawRole === "admin") formatted = "Admin";
+              else if (rawRole === "fasil") formatted = "Fasil";
+              else formatted = "Penghuni";
+
+              return {
+                id: u.idUser || idx + 1,
+                name: u.nama,
+                email: u.email,
+                currentRole: formatted,
+                newRole: formatted,
+                assignedBuilding: rawRole === "fasil" ? "Gedung Al-Farabi" : "Tidak diperlukan"
+              };
+            })
           );
         }
       } catch (err) {
@@ -71,9 +79,18 @@ export default function HakAksesPage() {
     setTimeout(() => setToastMessage(""), 3000);
   };
 
-  const handleSave = () => {
-    setToastMessage("Perubahan hak akses berhasil disimpan!");
-    setTimeout(() => setToastMessage(""), 3500);
+  const handleSave = async () => {
+    try {
+      const changed = users.filter((u) => u.currentRole !== u.newRole);
+      for (const u of changed) {
+        await updateUser(u.id, { role: u.newRole.toLowerCase() });
+      }
+      setToastMessage("Perubahan hak akses berhasil disimpan ke database!");
+      setTimeout(() => setToastMessage(""), 3500);
+      setUsers((prev) => prev.map((u) => ({ ...u, currentRole: u.newRole })));
+    } catch (e) {
+      setToastMessage("Gagal menyimpan perubahan hak akses.");
+    }
   };
 
   const filteredUsers = users.filter(

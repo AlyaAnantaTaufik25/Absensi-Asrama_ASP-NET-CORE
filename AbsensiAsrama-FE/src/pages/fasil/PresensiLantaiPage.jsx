@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Check, X } from "lucide-react";
-import { getUsers, getPresensi } from "../../services/api";
+import { getUsers, getPresensi, recordPresensi } from "../../services/api";
 
 export default function PresensiLantaiPage() {
   const [modalOpen, setModalOpen] = useState(false);
@@ -19,6 +19,7 @@ export default function PresensiLantaiPage() {
             penghuni.map((u) => {
               const uPresensi = Array.isArray(presensi) ? presensi.find((p) => p.idUser === u.idUser) : null;
               return {
+                idUser: u.idUser,
                 room: u.nomorKamar || "B-300",
                 name: u.nama,
                 time: uPresensi?.waktu
@@ -50,11 +51,23 @@ export default function PresensiLantaiPage() {
     setModalOpen(true);
   };
 
-  const handleSaveManual = (e) => {
+  const handleSaveManual = async (e) => {
     e.preventDefault();
     if (!selectedStudent) return;
 
     const currentTime = new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+
+    if (selectedStudent.idUser) {
+      try {
+        await recordPresensi({
+          idUser: selectedStudent.idUser,
+          status: manualStatus,
+          keterangan: manualNote || "Verifikasi manual oleh Fasilitator"
+        });
+      } catch (err) {
+        console.warn("Gagal menyimpan presensi manual:", err);
+      }
+    }
 
     setAttendanceList((prev) =>
       prev.map((item) =>

@@ -38,38 +38,7 @@ export default function LaporanKejadianPage() {
     "Kamar B-312"
   ];
 
-  const [reports, setReports] = useState([
-    {
-      id: "LK-01",
-      title: "Suara bising setelah jam malam",
-      type: "Pelanggaran",
-      location: "Koridor Lt. 3",
-      severity: "Sedang",
-      date: "21 Mei",
-      status: "Dibuka",
-      statusType: "open"
-    },
-    {
-      id: "LK-02",
-      title: "Kran kamar mandi bocor",
-      type: "Fasilitas rusak",
-      location: "Kamar mandi Lt. 3",
-      severity: "Sedang",
-      date: "22 Mei",
-      status: "Diteruskan ke pembina",
-      statusType: "forwarded"
-    },
-    {
-      id: "LK-03",
-      title: "Kunci kamar B-309 hilang",
-      type: "Kehilangan",
-      location: "Kamar penghuni",
-      severity: "Ringan",
-      date: "18 Mei",
-      status: "Selesai",
-      statusType: "resolved"
-    }
-  ]);
+  const [reports, setReports] = useState([]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -311,7 +280,12 @@ export default function LaporanKejadianPage() {
           </h2>
 
           <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-            {reports.map((rep) => {
+            {reports.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "32px 16px", color: "#94a3b8", fontSize: "13px" }}>
+                Belum ada laporan kejadian tercatat.
+              </div>
+            ) : (
+              reports.map((rep) => {
               let badgeBg = "#fef3c7";
               let badgeColor = "#b45309";
 
@@ -359,7 +333,8 @@ export default function LaporanKejadianPage() {
                   </div>
                 </div>
               );
-            })}
+            })
+          )}
           </div>
         </div>
       </div>

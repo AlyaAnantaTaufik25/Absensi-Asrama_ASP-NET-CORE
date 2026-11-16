@@ -43,7 +43,7 @@ export default function FasilSidebar({ activeTab, setActiveTab, user, onLogout, 
     >
       <div>
         {/* Brand Logo */}
-        <div style={{ padding: "0 10px 20px 10px" }}>
+        <div style={{ padding: "4px 14px 24px 14px" }}>
           <Logo variant="yellow" />
         </div>
 

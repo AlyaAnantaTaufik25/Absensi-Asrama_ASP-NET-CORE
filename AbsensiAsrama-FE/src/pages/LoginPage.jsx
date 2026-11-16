@@ -133,22 +133,12 @@ export default function LoginPage({ onLogin }) {
         }
 
         setErrorMessage(res.data?.message || "Email atau password salah.");
-        setIsLoading(false);
         return;
       }
 
-      // 2. Jika backend offline, fallback ke akun demo lokal
-      const match = demoAccounts.find((a) => a.email.toLowerCase() === email.toLowerCase());
-      if (match) {
-        onLogin(match.user);
-      } else {
-        const fallback = demoAccounts.find((a) => a.roleKey === selectedRole) || demoAccounts[0];
-        onLogin(fallback.user);
-      }
+      setErrorMessage(res.data?.message || "Tidak dapat login. Pastikan akun terdaftar di database MySQL.");
     } catch (err) {
-      // Fallback aman
-      const fallback = demoAccounts.find((a) => a.roleKey === selectedRole) || demoAccounts[0];
-      onLogin(fallback.user);
+      setErrorMessage("Gagal terhubung ke backend: " + (err.message || "Server offline"));
     } finally {
       setIsLoading(false);
     }
@@ -168,8 +158,8 @@ export default function LoginPage({ onLogin }) {
       }}
     >
       {/* Brand Header on Top */}
-      <div style={{ marginBottom: "20px", textAlign: "center" }}>
-        <Logo variant="dark" />
+      <div style={{ marginBottom: "24px", textAlign: "center" }}>
+        <Logo variant="dark" size="large" />
       </div>
 
       {/* Main Single Login Card */}
@@ -464,7 +454,7 @@ export default function LoginPage({ onLogin }) {
 
       {/* Footer Institution Label */}
       <div style={{ marginTop: "24px", fontSize: "12px", color: "#94a3b8", textAlign: "center" }}>
-        © 2026 AsramaAman · Universitas Andalas
+        © 2026 MyNAVA · Universitas Andalas
       </div>
     </div>
   );

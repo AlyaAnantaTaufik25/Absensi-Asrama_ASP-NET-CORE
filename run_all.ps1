@@ -2,8 +2,8 @@
 # run_all.ps1 – Jalankan Backend (.NET) dan Frontend (Vite) bersamaan
 # ---------------------------------------------------------------
 
-$beDir = "D:\Sistem informasi\SEMESTER 7\PABF\ProgramPABF\AbsensiAsrama-BE"
-$feDir = "D:\Sistem informasi\SEMESTER 7\PABF\ProgramPABF\AbsensiAsrama-FE"
+$beDir = Join-Path $PSScriptRoot "AbsensiAsrama-BE"
+$feDir = Join-Path $PSScriptRoot "AbsensiAsrama-FE"
 
 function Start-Backend {
     Write-Host "`n=== STARTING BACKEND (dotnet watch) ===`n" -ForegroundColor Cyan

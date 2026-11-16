@@ -15,13 +15,11 @@ import {
 export default function AdminSidebar({ activeTab, setActiveTab, onLogout }) {
   const menuItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { id: "master-data", label: "Master Data", icon: Database },
+    { id: "master-data", label: "Data Gedung", icon: Database },
     { id: "data-penghuni", label: "Data Penghuni", icon: Users },
     { id: "data-fasil", label: "Data Fasil", icon: UserCheck },
     { id: "akun-pengguna", label: "Akun Pengguna", icon: KeyRound },
-    { id: "hak-akses", label: "Hak Akses", icon: ShieldCheck },
-    { id: "rekapitulasi", label: "Rekapitulasi Presensi", icon: BarChart3 },
-    { id: "analytics", label: "Analytics & Export", icon: TrendingUp }
+    { id: "rekapitulasi", label: "Rekapitulasi Presensi", icon: BarChart3 }
   ];
 
   return (
@@ -46,7 +44,7 @@ export default function AdminSidebar({ activeTab, setActiveTab, onLogout }) {
     >
       <div>
         {/* Brand Logo */}
-        <div style={{ padding: "0 10px 24px 10px" }}>
+        <div style={{ padding: "4px 14px 24px 14px" }}>
           <Logo variant="yellow" />
         </div>
 

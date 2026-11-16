@@ -5,10 +5,10 @@ export default function Footer() {
     <footer className="footer-main">
       <div className="footer-inner">
         <div className="footer-left">
-          <strong>AsramaAman</strong> • Sistem Manajemen Presensi & Hunian Mahasiswa
+          <strong>MyNAVA</strong> • Navigasi Absensi dan Verifikasi Asrama
         </div>
         <div className="footer-right">
-          © 2025 Universitas • Hak Cipta Dilindungi Undang-Undang.
+          © 2026 Universitas Andalas • Hak Cipta Dilindungi.
         </div>
       </div>
     </footer>

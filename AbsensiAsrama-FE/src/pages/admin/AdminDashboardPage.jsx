@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Users,
   UserCheck,
@@ -8,64 +8,103 @@ import {
   RotateCw,
   ChevronRight
 } from "lucide-react";
+import { getStats, getPresensi } from "../../services/api";
 
 export default function AdminDashboardPage({ setActiveTab }) {
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [stats, setStats] = useState({
+    totalPenghuni: 0,
+    totalFasil: 0,
+    totalGedung: 0,
+    totalKamar: 0,
+    attendanceRate: 0
+  });
 
-  const handleRefresh = () => {
+  const [trendData, setTrendData] = useState([
+    { day: "Min", val: 0 },
+    { day: "Sen", val: 0 },
+    { day: "Sel", val: 0 },
+    { day: "Rab", val: 0 },
+    { day: "Kam", val: 0 },
+    { day: "Jum", val: 0 },
+    { day: "Sab", val: 0 }
+  ]);
+
+  const loadStats = async () => {
+    try {
+      const [data, presensi] = await Promise.all([getStats(), getPresensi()]);
+      if (data) {
+        setStats(data);
+      }
+      if (Array.isArray(presensi)) {
+        const days = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
+        const counts = [0, 0, 0, 0, 0, 0, 0];
+        const totals = [0, 0, 0, 0, 0, 0, 0];
+        presensi.forEach((p) => {
+          const d = new Date(p.waktu || p.tanggal).getDay();
+          totals[d]++;
+          if (p.status === "Hadir") counts[d]++;
+        });
+        setTrendData(
+          days.map((day, idx) => ({
+            day,
+            val: totals[idx] > 0 ? Math.round((counts[idx] / totals[idx]) * 100) : 0
+          }))
+        );
+      }
+    } catch (err) {
+      console.warn("Gagal memuat statistik admin:", err);
+    }
+  };
+
+  useEffect(() => {
+    loadStats();
+  }, []);
+
+  const handleRefresh = async () => {
     setIsRefreshing(true);
+    await loadStats();
     setTimeout(() => {
       setIsRefreshing(false);
-    }, 600);
+    }, 400);
   };
 
   const statCards = [
     {
       id: "penghuni",
       label: "Penghuni Aktif",
-      value: "37",
+      value: String(stats.totalPenghuni),
       icon: Users,
       tab: "data-penghuni"
     },
     {
       id: "fasil",
       label: "Fasil Aktif",
-      value: "10",
+      value: String(stats.totalFasil),
       icon: UserCheck,
       tab: "data-fasil"
     },
     {
       id: "gedung",
       label: "Gedung",
-      value: "10",
+      value: String(stats.totalGedung),
       icon: Building2,
       tab: "master-data"
     },
     {
       id: "kamar",
       label: "Kamar",
-      value: "136",
+      value: String(stats.totalKamar),
       icon: DoorClosed,
       tab: "master-data"
     },
     {
       id: "kehadiran",
       label: "Kehadiran Hari Ini",
-      value: "68%",
+      value: `${stats.attendanceRate}%`,
       icon: Percent,
       tab: "rekapitulasi"
     }
-  ];
-
-  // 7-day attendance trend data
-  const trendData = [
-    { day: "Rab", val: 82 },
-    { day: "Kam", val: 88 },
-    { day: "Jum", val: 84 },
-    { day: "Sab", val: 92 },
-    { day: "Min", val: 95 },
-    { day: "Sen", val: 90 },
-    { day: "Sel", val: 68 }
   ];
 
   return (
