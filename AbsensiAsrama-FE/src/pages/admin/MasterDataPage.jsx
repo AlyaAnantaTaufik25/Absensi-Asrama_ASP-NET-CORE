@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Search,
   Plus,
@@ -10,6 +10,8 @@ import {
   ChevronDown
 } from "lucide-react";
 
+const API = "http://localhost:5000";
+
 export default function MasterDataPage() {
   const [activeSubTab, setActiveSubTab] = useState("gedung"); // "gedung" | "lantai" | "kamar"
   const [searchQuery, setSearchQuery] = useState("");
@@ -19,100 +21,175 @@ export default function MasterDataPage() {
   const [showModalLantai, setShowModalLantai] = useState(false);
   const [showModalKamar, setShowModalKamar] = useState(false);
 
-  // Gedung Data
-  const [gedungList, setGedungList] = useState([
-    { id: 1, nama: "Gedung A", lat: "-0.9411", lng: "100.4172", radius: "50 m", fasil: "Budi Santoso" },
-    { id: 2, nama: "Gedung B", lat: "-0.9413", lng: "100.4172", radius: "50 m", fasil: "Maya Kurnia" },
-    { id: 3, nama: "Gedung C", lat: "-0.9409", lng: "100.4172", radius: "70 m", fasil: "Andi Rahman" },
-    { id: 4, nama: "Gedung D", lat: "-0.9414", lng: "100.4172", radius: "50 m", fasil: "Risa Melati" },
-    { id: 5, nama: "Gedung E", lat: "-0.9397", lng: "100.4172", radius: "50 m", fasil: "Dedi Irawan" }
-  ]);
+  // Data dari database
+  const [gedungList, setGedungList] = useState([]);
+  const [kamarList, setKamarList] = useState([]);
+  const [lantaiList, setLantaiList] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-  // Lantai Data
-  const [lantaiList, setLantaiList] = useState([
-    { id: 1, gedung: "Gedung A", nomor: "Lantai 1", kamar: "4 Kamar" },
-    { id: 2, gedung: "Gedung A", nomor: "Lantai 2", kamar: "6 Kamar" },
-    { id: 3, gedung: "Gedung B", nomor: "Lantai 1", kamar: "5 Kamar" },
-    { id: 4, gedung: "Gedung B", nomor: "Lantai 2", kamar: "5 Kamar" },
-    { id: 5, gedung: "Gedung C", nomor: "Lantai 1", kamar: "4 Kamar" }
-  ]);
+  // Fetch gedung dari API
+  const fetchGedung = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch(`${API}/api/gedung`);
+      if (!res.ok) throw new Error("Gagal mengambil data gedung");
+      const data = await res.json();
+      setGedungList(data.map(g => ({
+        id: g.idGedung,
+        nama: g.namaGedung,
+        idUser: g.idUser,
+        fasil: g.namaFasil || "-",
+        lat: "-",
+        lng: "-",
+        radius: "-"
+      })));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  // Kamar Data
-  const [kamarList, setKamarList] = useState([
-    { id: 1, nomor: "A-101", gedung: "Gedung A", lantai: "1", kapasitas: "4 orang", terisi: "3/4" },
-    { id: 2, nomor: "A-102", gedung: "Gedung A", lantai: "1", kapasitas: "4 orang", terisi: "4/4" },
-    { id: 3, nomor: "A-103", gedung: "Gedung A", lantai: "1", kapasitas: "4 orang", terisi: "2/4" },
-    { id: 4, nomor: "A-104", gedung: "Gedung A", lantai: "1", kapasitas: "4 orang", terisi: "4/4" },
-    { id: 5, nomor: "A-201", gedung: "Gedung A", lantai: "2", kapasitas: "4 orang", terisi: "3/4" }
-  ]);
+  // Fetch kamar dari API
+  const fetchKamar = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch(`${API}/api/kamar`);
+      if (!res.ok) throw new Error("Gagal mengambil data kamar");
+      const data = await res.json();
+      setKamarList(data.map(k => ({
+        id: k.noKamar,
+        nomor: k.noKamar,
+        gedung: k.namaGedung || "-",
+        lantai: String(k.lantai),
+        idGedung: k.idGedung,
+        kapasitas: "-",
+        terisi: "-"
+      })));
+
+      // Hitung lantai unik dari kamar
+      const lantaiMap = {};
+      data.forEach(k => {
+        const key = `${k.idGedung}-${k.lantai}`;
+        if (!lantaiMap[key]) {
+          lantaiMap[key] = {
+            id: key,
+            gedung: k.namaGedung || "-",
+            nomor: `Lantai ${k.lantai}`,
+            kamar: 0
+          };
+        }
+        lantaiMap[key].kamar++;
+      });
+      setLantaiList(Object.values(lantaiMap).map(l => ({
+        ...l,
+        kamar: `${l.kamar} Kamar`
+      })));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchGedung();
+    fetchKamar();
+  }, []);
+
+  // Hapus gedung
+  const handleDeleteGedung = async (id) => {
+    if (!window.confirm("Yakin hapus gedung ini?")) return;
+    try {
+      const res = await fetch(`${API}/api/gedung/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Gagal menghapus gedung");
+      await fetchGedung();
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
+  // Hapus kamar
+  const handleDeleteKamar = async (noKamar) => {
+    if (!window.confirm("Yakin hapus kamar ini?")) return;
+    try {
+      const res = await fetch(`${API}/api/kamar/${noKamar}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Gagal menghapus kamar");
+      await fetchKamar();
+    } catch (e) {
+      alert(e.message);
+    }
+  };
 
   // Form states for modals
   const [formGedung, setFormGedung] = useState({
     nama: "",
-    fasil: "Budi Santoso",
+    idUser: "",
     lat: "-0.9411",
     lng: "100.4172",
     radius: "50"
   });
 
-  const [formLantai, setFormLantai] = useState({
-    gedung: "Gedung A",
-    nomor: ""
-  });
-
   const [formKamar, setFormKamar] = useState({
-    gedung: "Gedung A",
-    lantai: "Lantai 1",
-    nomor: "",
-    kapasitas: "4"
+    noKamar: "",
+    lantai: "1",
+    idGedung: ""
   });
 
   // Handlers
-  const handleSaveGedung = (e) => {
+  const handleSaveGedung = async (e) => {
     e.preventDefault();
-    const newEntry = {
-      id: Date.now(),
-      nama: formGedung.nama || `Gedung ${String.fromCharCode(65 + gedungList.length)}`,
-      lat: formGedung.lat,
-      lng: formGedung.lng,
-      radius: `${formGedung.radius} m`,
-      fasil: formGedung.fasil
-    };
-    setGedungList([...gedungList, newEntry]);
-    setShowModalGedung(false);
-    setFormGedung({ nama: "", fasil: "Budi Santoso", lat: "-0.9411", lng: "100.4172", radius: "50" });
+    if (!formGedung.idUser) { alert("Pilih fasil pengelola (IdUser) terlebih dahulu."); return; }
+    try {
+      const res = await fetch(`${API}/api/gedung`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ namaGedung: formGedung.nama, idUser: parseInt(formGedung.idUser) })
+      });
+      if (!res.ok) throw new Error("Gagal menyimpan gedung");
+      setShowModalGedung(false);
+      setFormGedung({ nama: "", idUser: "", lat: "-0.9411", lng: "100.4172", radius: "50" });
+      await fetchGedung();
+    } catch (err) {
+      alert(err.message);
+    }
   };
 
-  const handleSaveLantai = (e) => {
+  const handleSaveKamar = async (e) => {
     e.preventDefault();
-    const newEntry = {
-      id: Date.now(),
-      gedung: formLantai.gedung,
-      nomor: formLantai.nomor || `Lantai ${lantaiList.length + 1}`,
-      kamar: "0 Kamar"
-    };
-    setLantaiList([...lantaiList, newEntry]);
-    setShowModalLantai(false);
-    setFormLantai({ gedung: "Gedung A", nomor: "" });
-  };
-
-  const handleSaveKamar = (e) => {
-    e.preventDefault();
-    const newEntry = {
-      id: Date.now(),
-      nomor: formKamar.nomor || `Kamar-${kamarList.length + 1}`,
-      gedung: formKamar.gedung,
-      lantai: formKamar.lantai.replace("Lantai ", ""),
-      kapasitas: `${formKamar.kapasitas} orang`,
-      terisi: `0/${formKamar.kapasitas}`
-    };
-    setKamarList([...kamarList, newEntry]);
-    setShowModalKamar(false);
-    setFormKamar({ gedung: "Gedung A", lantai: "Lantai 1", nomor: "", kapasitas: "4" });
+    if (!formKamar.idGedung) { alert("Pilih gedung terlebih dahulu."); return; }
+    try {
+      const res = await fetch(`${API}/api/kamar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ noKamar: formKamar.noKamar, lantai: parseInt(formKamar.lantai), idGedung: parseInt(formKamar.idGedung) })
+      });
+      if (!res.ok) { const err = await res.json(); throw new Error(err.message || "Gagal menyimpan kamar"); }
+      setShowModalKamar(false);
+      setFormKamar({ noKamar: "", lantai: "1", idGedung: "" });
+      await fetchKamar();
+    } catch (err) {
+      alert(err.message);
+    }
   };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+      {/* Error banner */}
+      {error && (
+        <div style={{ padding: "10px 16px", backgroundColor: "#fee2e2", borderRadius: "8px", color: "#b91c1c", fontSize: "13px" }}>
+          ⚠️ {error} — Pastikan backend berjalan dan MySQL aktif.
+        </div>
+      )}
+
+      {/* Loading indicator */}
+      {loading && (
+        <div style={{ padding: "10px 16px", backgroundColor: "#eff6ff", borderRadius: "8px", color: "#1d4ed8", fontSize: "13px" }}>
+          ⏳ Memuat data dari database...
+        </div>
+      )}
+
       {/* 1. Header Row */}
       <div>
         <div
@@ -400,7 +477,7 @@ export default function MasterDataPage() {
                             padding: "4px"
                           }}
                           title="Hapus"
-                          onClick={() => setGedungList(gedungList.filter((x) => x.id !== g.id))}
+                          onClick={() => handleDeleteGedung(g.id)}
                         >
                           <Trash2 size={15} />
                         </button>
@@ -488,7 +565,7 @@ export default function MasterDataPage() {
                         </button>
                         <button
                           style={{ border: "none", background: "none", color: "#ef4444", cursor: "pointer" }}
-                          onClick={() => setKamarList(kamarList.filter((x) => x.id !== k.id))}
+                          onClick={() => handleDeleteKamar(k.nomor)}
                         >
                           <Trash2 size={15} />
                         </button>
@@ -560,11 +637,12 @@ export default function MasterDataPage() {
 
                 <div>
                   <label style={{ display: "block", fontSize: "12px", fontWeight: "700", color: "#334155", marginBottom: "4px" }}>
-                    Fasil Pengelola
+                    ID Fasil Pengelola *
                   </label>
                   <select
-                    value={formGedung.fasil}
-                    onChange={(e) => setFormGedung({ ...formGedung, fasil: e.target.value })}
+                    value={formGedung.idUser}
+                    onChange={(e) => setFormGedung({ ...formGedung, idUser: e.target.value })}
+                    required
                     style={{
                       width: "100%",
                       height: "38px",
@@ -576,49 +654,17 @@ export default function MasterDataPage() {
                       cursor: "pointer"
                     }}
                   >
-                    <option value="Budi Santoso">Budi Santoso</option>
-                    <option value="Maya Kurnia">Maya Kurnia</option>
-                    <option value="Andi Rahman">Andi Rahman</option>
-                    <option value="Risa Melati">Risa Melati</option>
-                    <option value="Dedi Irawan">Dedi Irawan</option>
+                    <option value="">-- Pilih Fasil --</option>
+                    {gedungList
+                      .filter((g, i, arr) => arr.findIndex(x => x.idUser === g.idUser) === i && g.idUser)
+                      .map(g => (
+                        <option key={g.idUser} value={g.idUser}>{g.fasil} (ID: {g.idUser})</option>
+                      ))
+                    }
                   </select>
-                </div>
-              </div>
-
-              {/* Coordinates & Radius Row */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px" }}>
-                <div>
-                  <label style={{ display: "block", fontSize: "11.5px", fontWeight: "700", color: "#334155", marginBottom: "4px" }}>
-                    Latitude
-                  </label>
-                  <input
-                    type="text"
-                    value={formGedung.lat}
-                    onChange={(e) => setFormGedung({ ...formGedung, lat: e.target.value })}
-                    style={{ width: "100%", height: "38px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12px", boxSizing: "border-box" }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: "block", fontSize: "11.5px", fontWeight: "700", color: "#334155", marginBottom: "4px" }}>
-                    Longitude
-                  </label>
-                  <input
-                    type="text"
-                    value={formGedung.lng}
-                    onChange={(e) => setFormGedung({ ...formGedung, lng: e.target.value })}
-                    style={{ width: "100%", height: "38px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12px", boxSizing: "border-box" }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: "block", fontSize: "11.5px", fontWeight: "700", color: "#334155", marginBottom: "4px" }}>
-                    Radius geofence (m)
-                  </label>
-                  <input
-                    type="number"
-                    value={formGedung.radius}
-                    onChange={(e) => setFormGedung({ ...formGedung, radius: e.target.value })}
-                    style={{ width: "100%", height: "38px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12px", boxSizing: "border-box" }}
-                  />
+                  <p style={{ fontSize: "11px", color: "#94a3b8", margin: "4px 0 0 0" }}>
+                    Pilih dari daftar fasil yang sudah terdaftar di database.
+                  </p>
                 </div>
               </div>
 
@@ -823,12 +869,14 @@ export default function MasterDataPage() {
                     Gedung *
                   </label>
                   <select
-                    value={formKamar.gedung}
-                    onChange={(e) => setFormKamar({ ...formKamar, gedung: e.target.value })}
+                    value={formKamar.idGedung}
+                    onChange={(e) => setFormKamar({ ...formKamar, idGedung: e.target.value })}
+                    required
                     style={{ width: "100%", height: "38px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12.5px" }}
                   >
+                    <option value="">-- Pilih Gedung --</option>
                     {gedungList.map((g) => (
-                      <option key={g.id} value={g.nama}>{g.nama}</option>
+                      <option key={g.id} value={g.id}>{g.nama}</option>
                     ))}
                   </select>
                 </div>
@@ -837,19 +885,19 @@ export default function MasterDataPage() {
                   <label style={{ display: "block", fontSize: "12px", fontWeight: "700", color: "#334155", marginBottom: "4px" }}>
                     Lantai *
                   </label>
-                  <select
+                  <input
+                    type="number"
+                    required
+                    min="1"
                     value={formKamar.lantai}
                     onChange={(e) => setFormKamar({ ...formKamar, lantai: e.target.value })}
-                    style={{ width: "100%", height: "38px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12.5px" }}
-                  >
-                    <option value="Lantai 1">Lantai 1</option>
-                    <option value="Lantai 2">Lantai 2</option>
-                    <option value="Lantai 3">Lantai 3</option>
-                  </select>
+                    placeholder="Contoh: 1"
+                    style={{ width: "100%", height: "38px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12.5px", boxSizing: "border-box" }}
+                  />
                 </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "12px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "12px" }}>
                 <div>
                   <label style={{ display: "block", fontSize: "12px", fontWeight: "700", color: "#334155", marginBottom: "4px" }}>
                     Nomor Kamar *
@@ -857,27 +905,13 @@ export default function MasterDataPage() {
                   <input
                     type="text"
                     required
-                    value={formKamar.nomor}
-                    onChange={(e) => setFormKamar({ ...formKamar, nomor: e.target.value })}
+                    value={formKamar.noKamar}
+                    onChange={(e) => setFormKamar({ ...formKamar, noKamar: e.target.value })}
                     placeholder="Contoh: A-101"
                     style={{ width: "100%", height: "38px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12.5px", boxSizing: "border-box" }}
                   />
                 </div>
-
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: "700", color: "#334155", marginBottom: "4px" }}>
-                    Kapasitas *
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="10"
-                    required
-                    value={formKamar.kapasitas}
-                    onChange={(e) => setFormKamar({ ...formKamar, kapasitas: e.target.value })}
-                    style={{ width: "100%", height: "38px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12.5px", boxSizing: "border-box" }}
-                  />
-                </div>
+              </div>
               </div>
 
               <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
