@@ -484,7 +484,7 @@ export default function RiwayatPresensiPage({ user }) {
                 <div style={{ padding: "12px", backgroundColor: "#f8fafc", borderRadius: "10px" }}>
                   <div style={{ color: "#64748b", fontSize: "11px" }}>Radius Geofence</div>
                   <div style={{ fontWeight: "800", color: "#2349d4", fontSize: "16px" }}>
-                    {selectedRecord.lokasi} (Di dalam radius 50m)
+                    {selectedRecord.lokasi} (Di dalam radius 100m)
                   </div>
                 </div>
               </div>

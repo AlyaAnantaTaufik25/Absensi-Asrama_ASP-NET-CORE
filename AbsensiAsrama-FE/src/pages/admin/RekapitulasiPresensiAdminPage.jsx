@@ -331,9 +331,13 @@ export default function RekapitulasiPresensiAdminPage() {
               }}
             >
               <option value="SEMUA">SEMUA</option>
-              <option value="Gedung A">Gedung A</option>
-              <option value="Gedung B">Gedung B</option>
-              <option value="Gedung C">Gedung C</option>
+              <option value="Asrama Hijau">Asrama Hijau</option>
+              <option value="Asrama Orange">Asrama Orange</option>
+              <option value="Asrama Roesma M. Sjaaf">Asrama Roesma M. Sjaaf</option>
+              <option value="Asrama Menpera">Asrama Menpera</option>
+              <option value="Asrama PUPERA 1">Asrama PUPERA 1</option>
+              <option value="Asrama Rusunawa">Asrama Rusunawa</option>
+              <option value="Asrama RPX">Asrama RPX</option>
             </select>
           </div>
 

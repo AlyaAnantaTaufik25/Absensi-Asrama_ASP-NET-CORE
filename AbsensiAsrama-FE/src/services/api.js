@@ -108,6 +108,26 @@ export async function recordPresensi(presensiData) {
 }
 
 /**
+ * Unggah berkas bukti perizinan ke backend
+ */
+export async function uploadIzinFile(file) {
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const res = await fetch(`${API_BASE_URL}/api/perizinan/upload`, {
+      method: "POST",
+      body: formData
+    });
+    if (!res.ok) throw new Error("Gagal mengunggah berkas");
+    return await res.json();
+  } catch (err) {
+    console.warn("Gagal unggah berkas perizinan:", err);
+    return null;
+  }
+}
+
+/**
  * Kirim perizinan ke backend
  */
 export async function submitIzin(izinData) {

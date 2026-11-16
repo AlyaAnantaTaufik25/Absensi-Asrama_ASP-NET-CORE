@@ -590,7 +590,7 @@ app.MapPost("/api/seed", async (ApplicationDbContext db) =>
 });
 
 // -------------------------------------------------
-// Perizinan
+// Perizinan & File Upload
 // -------------------------------------------------
 app.MapGet("/api/perizinan", async (ApplicationDbContext db) =>
 {
@@ -601,12 +601,51 @@ app.MapGet("/api/perizinan", async (ApplicationDbContext db) =>
     return Results.Ok(list);
 });
 
+app.MapPost("/api/perizinan/upload", async (HttpRequest request, IWebHostEnvironment env) =>
+{
+    if (!request.HasFormContentType)
+        return Results.BadRequest(new { success = false, message = "Tipe konten form diperlukan." });
+
+    var form = await request.ReadFormAsync();
+    var file = form.Files.GetFile("file") ?? form.Files.FirstOrDefault();
+    if (file == null || file.Length == 0)
+        return Results.BadRequest(new { success = false, message = "Tidak ada berkas yang diunggah." });
+
+    var webRoot = env.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+    var uploadsFolder = Path.Combine(webRoot, "uploads");
+    if (!Directory.Exists(uploadsFolder)) Directory.CreateDirectory(uploadsFolder);
+
+    var ext = Path.GetExtension(file.FileName);
+    var cleanBaseName = Path.GetFileNameWithoutExtension(file.FileName).Replace(" ", "_");
+    var uniqueFileName = $"{DateTime.Now:yyyyMMdd_HHmmss}_{cleanBaseName}{ext}";
+    var filePath = Path.Combine(uploadsFolder, uniqueFileName);
+
+    using (var stream = new FileStream(filePath, FileMode.Create))
+    {
+        await file.CopyToAsync(stream);
+    }
+
+    var fileUrl = $"/uploads/{uniqueFileName}";
+    return Results.Ok(new { success = true, fileName = uniqueFileName, originalName = file.FileName, url = fileUrl });
+});
+
 app.MapPost("/api/perizinan", async (CreatePerizinanRequest req, ApplicationDbContext db) =>
 {
+    var nim = req.Nim;
+    var userExists = await db.Users.AnyAsync(u => u.Nim == nim);
+    if (!userExists)
+    {
+        var fallbackUser = await db.Users.FirstOrDefaultAsync(u => u.Role == "penghuni" || u.Role == "mahasiswa");
+        if (fallbackUser != null)
+        {
+            nim = fallbackUser.Nim;
+        }
+    }
+
     var izin = new Perizinan
     {
-        Nim = req.Nim,
-        Tanggal = req.Tanggal,
+        Nim = nim,
+        Tanggal = req.Tanggal != default ? req.Tanggal : DateTime.Today,
         Alasan = req.Alasan,
         FileBukti = req.FileBukti
     };
@@ -642,12 +681,53 @@ app.MapGet("/api/auth/hash", (string password) =>
     });
 });
 
-// Auto-normalize legacy roles ('mahasiswa' -> 'penghuni') in database on startup
+// Auto-normalize legacy roles ('mahasiswa' -> 'penghuni') & sync 7 Gedung Asrama on startup
 try
 {
     using var scope = app.Services.CreateScope();
     var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     await dbContext.Database.ExecuteSqlRawAsync("UPDATE user SET role = 'penghuni' WHERE role = 'mahasiswa' OR role IS NULL OR role = ''");
+
+    // Pastikan user demo ada
+    var fasilUser = await dbContext.Users.FirstOrDefaultAsync(u => u.Role == "fasil") ?? await dbContext.Users.FirstOrDefaultAsync();
+    int fasilId = fasilUser?.IdUser ?? 1;
+
+    // 7 Asrama resmi (2 Laki-laki, 5 Perempuan)
+    var asramaList = new (string Name, string Prefix)[]
+    {
+        ("Asrama Hijau", "HJ"),
+        ("Asrama Orange", "OR"),
+        ("Asrama Roesma M. Sjaaf", "RS"),
+        ("Asrama Menpera", "MP"),
+        ("Asrama PUPERA 1", "PP"),
+        ("Asrama Rusunawa", "RW"),
+        ("Asrama RPX", "RPX")
+    };
+
+    foreach (var (asramaName, prefix) in asramaList)
+    {
+        var existing = await dbContext.Gedungs.FirstOrDefaultAsync(g => g.NamaGedung == asramaName);
+        if (existing == null)
+        {
+            var newGedung = new Gedung { NamaGedung = asramaName, IdUser = fasilId };
+            dbContext.Gedungs.Add(newGedung);
+            await dbContext.SaveChangesAsync();
+
+            // Generate initial rooms for each asrama (3 floors, 4 rooms each)
+            for (int fl = 1; fl <= 3; fl++)
+            {
+                for (int rm = 1; rm <= 4; rm++)
+                {
+                    var no = $"{prefix}-{fl}0{rm}";
+                    if (!await dbContext.Kamars.AnyAsync(k => k.NoKamar == no))
+                    {
+                        dbContext.Kamars.Add(new Kamar { NoKamar = no, Lantai = fl, IdGedung = newGedung.IdGedung });
+                    }
+                }
+            }
+            await dbContext.SaveChangesAsync();
+        }
+    }
 }
 catch { }
 

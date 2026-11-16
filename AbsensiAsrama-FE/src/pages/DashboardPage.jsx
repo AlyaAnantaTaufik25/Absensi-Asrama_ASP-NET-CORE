@@ -488,59 +488,6 @@ export default function DashboardPage({ user, setActiveTab }) {
               </div>
             )}
           </div>
-
-          {/* Pengumuman Box */}
-          <div className="content-card" style={{ padding: "20px" }}>
-            <div style={{ fontSize: "14px", fontWeight: "700", color: "#0f172a", marginBottom: "14px" }}>
-              Pengumuman
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              {/* Item 1 */}
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  borderBottom: "1px solid #f8fafc",
-                  paddingBottom: "10px"
-                }}
-              >
-                <div>
-                  <div style={{ fontSize: "11px", fontWeight: "700", color: "#2349d4", marginBottom: "2px" }}>
-                    Kajian Rutin
-                  </div>
-                  <div style={{ fontSize: "12.5px", fontWeight: "700", color: "#0f172a" }}>
-                    Kajian Akhlak bersama Fasil
-                  </div>
-                  <div style={{ fontSize: "11px", color: "#64748b" }}>
-                    Wajib bagi penghuni Gedung Asrama Hijau
-                  </div>
-                </div>
-                <div style={{ fontSize: "11px", fontWeight: "600", color: "#475569", whiteSpace: "nowrap" }}>
-                  Sabtu, 24 Oktober 2026
-                </div>
-              </div>
-
-              {/* Item 2 */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div>
-                  <div style={{ fontSize: "11px", fontWeight: "700", color: "#2349d4", marginBottom: "2px" }}>
-                    Piket Bersama
-                  </div>
-                  <div style={{ fontSize: "12.5px", fontWeight: "700", color: "#0f172a" }}>
-                    Gotong Royong Asrama Hijau
-                  </div>
-                  <div style={{ fontSize: "11px", color: "#64748b" }}>
-                    Wajib bagi penghuni Gedung Asrama Hijau
-                  </div>
-                </div>
-                <div style={{ fontSize: "11px", fontWeight: "600", color: "#475569", whiteSpace: "nowrap" }}>
-                  Minggu, 25 Oktober 2026
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>

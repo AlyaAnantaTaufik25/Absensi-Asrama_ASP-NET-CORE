@@ -50,7 +50,7 @@ export default function LoginPage({ onLogin }) {
       roleLabel: "Fasilitator",
       fullName: "Kak Alif Rahman",
       idNumber: "FASIL-01",
-      roomInfo: "Lantai 3 · Gedung Al-Farabi",
+      roomInfo: "Lantai 3 · Asrama Hijau",
       email: "fasil@demo.com",
       icon: UserCheck,
       user: {
@@ -58,8 +58,8 @@ export default function LoginPage({ onLogin }) {
         displayName: "KAK ALIF RAHMAN",
         initials: "AR",
         nim: "FASIL-01",
-        room: "Lantai 3 · Gedung Al-Farabi",
-        asrama: "Gedung Al-Farabi",
+        room: "Lantai 3 · Asrama Hijau",
+        asrama: "Asrama Hijau",
         role: "fasil"
       }
     },

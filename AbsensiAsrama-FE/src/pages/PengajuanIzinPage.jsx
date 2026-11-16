@@ -15,7 +15,7 @@ import {
   Briefcase,
   HeartPulse
 } from "lucide-react";
-import { submitIzin, getPerizinan } from "../services/api";
+import { submitIzin, getPerizinan, uploadIzinFile } from "../services/api";
 
 export default function PengajuanIzinPage({ user }) {
   const [activeTab, setActiveTab] = useState("riwayat"); // "riwayat" or "form"
@@ -35,6 +35,9 @@ export default function PengajuanIzinPage({ user }) {
   });
   const [reason, setReason] = useState("");
   const [attachedFile, setAttachedFile] = useState(null);
+  const [selectedRawFile, setSelectedRawFile] = useState(null);
+  const [isSubmittingForm, setIsSubmittingForm] = useState(false);
+  const fileInputRef = React.useRef(null);
 
   // Table Data - Kosong secara default sampai dimuat dari MySQL
   const [izinList, setIzinList] = useState([]);
@@ -84,32 +87,68 @@ export default function PengajuanIzinPage({ user }) {
     }));
   };
 
-  const handleFormSubmit = (e) => {
+  const handleFormSubmit = async (e) => {
     e.preventDefault();
-    const newEntry = {
-      id: Date.now(),
-      jenis: jenisIzin === "sakit" ? "Sakit" : "Izin",
-      rentang: `${startDate} - ${endDate}`,
-      subRentang: selectedSessions.penuh ? "Penuh / Bermalam" : "Sesi Presensi Dipilih",
-      alasan: reason.slice(0, 35) + (reason.length > 35 ? "..." : ""),
-      subAlasan: "Asrama Hijau",
-      dokumen: attachedFile ? attachedFile.name : "Surat_Permohonan.pdf",
-      status: "Menunggu Persetujuan",
-      statusType: "amber"
-    };
-    setIzinList([newEntry, ...izinList]);
-    setShowModal(false);
-    setActiveTab("riwayat");
+    setIsSubmittingForm(true);
 
-    // Kirim perizinan ke Backend API
-    submitIzin({
-      nim: user?.nim || "2311523005",
-      tanggal: startDate ? new Date(startDate) : new Date(),
-      alasan: `${jenisIzin === "sakit" ? "Sakit: " : "Izin: "}${reason}`,
-      fileBukti: attachedFile ? attachedFile.name : null
-    }).catch((err) => console.warn("Koneksi backend izin:", err));
+    let finalFileName = attachedFile ? attachedFile.name : null;
 
-    alert("Permohonan izin baru berhasil diajukan dan disimpan ke database! Menunggu review fasil.");
+    // Jika pengguna memilih file asli, unggah ke backend API
+    if (selectedRawFile) {
+      try {
+        const uploadRes = await uploadIzinFile(selectedRawFile);
+        if (uploadRes && uploadRes.fileName) {
+          finalFileName = uploadRes.fileName;
+        }
+      } catch (err) {
+        console.warn("Gagal unggah file bukti:", err);
+      }
+    }
+
+    try {
+      // Simpan perizinan ke database MySQL
+      await submitIzin({
+        nim: user?.nim || "2311523005",
+        tanggal: startDate ? new Date(startDate) : new Date(),
+        alasan: `${jenisIzin === "sakit" ? "Sakit: " : "Izin: "}${reason}`,
+        fileBukti: finalFileName
+      });
+
+      // Muat ulang daftar izin dari database MySQL
+      const freshData = await getPerizinan();
+      if (Array.isArray(freshData)) {
+        const userIzin = user?.nim ? freshData.filter((d) => d.nim === user.nim) : freshData;
+        setIzinList(
+          userIzin.map((item, idx) => ({
+            id: item.idIzin || idx + 1,
+            jenis: item.alasan?.toLowerCase().includes("sakit") ? "Sakit" : "Izin",
+            rentang: item.tanggal
+              ? new Date(item.tanggal).toLocaleDateString("id-ID", {
+                  day: "numeric",
+                  month: "short",
+                  year: "numeric"
+                })
+              : "-",
+            subRentang: selectedSessions.penuh ? "Penuh / Bermalam" : "Sesi Presensi",
+            alasan: item.alasan || "Pengajuan Perizinan",
+            subAlasan: `NIM: ${item.nim || "-"}`,
+            dokumen: item.fileBukti || "Surat_Permohonan.pdf",
+            status: "Tercatat di Database",
+            statusType: "green"
+          }))
+        );
+      }
+    } catch (err) {
+      console.warn("Gagal simpan izin ke backend:", err);
+    } finally {
+      setIsSubmittingForm(false);
+      setShowModal(false);
+      setActiveTab("riwayat");
+      setReason("");
+      setAttachedFile(null);
+      setSelectedRawFile(null);
+      alert("Permohonan izin dan dokumen bukti berhasil diajukan dan tersimpan di database MySQL!");
+    }
   };
 
   const filteredList = izinList.filter((item) => {
@@ -849,35 +888,55 @@ export default function PengajuanIzinPage({ user }) {
                   Unggah Dokumen Bukti
                 </div>
                 <div style={{ fontSize: "10.5px", color: "#64748b", marginBottom: "8px" }}>
-                  (Opsional untuk izin singkat / Wajib untuk sakit & bermalam - PDF, JPG (Maks 5MB))
+                  (Opsional untuk izin singkat / Wajib untuk sakit & bermalam - PDF, JPG, PNG (Maks 5MB))
                 </div>
 
-                {/* Dropzone */}
-                <div
-                  onClick={() => {
-                    setAttachedFile({
-                      name: "Surat_Keterangan_Sakit.pdf",
-                      size: "1.4 MB • Terlampir"
-                    });
+                {/* Input file tersembunyi yang nyata */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                  style={{ display: "none" }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setSelectedRawFile(file);
+                      setAttachedFile({
+                        name: file.name,
+                        size: `${(file.size / (1024 * 1024)).toFixed(2)} MB • Terpilih`
+                      });
+                    }
                   }}
+                />
+
+                {/* Dropzone interaktif */}
+                <div
+                  onClick={() => fileInputRef.current?.click()}
                   style={{
                     border: "1.5px dashed #bfdbfe",
                     backgroundColor: "#f8fafc",
                     borderRadius: "12px",
-                    padding: "14px",
+                    padding: "16px",
                     textAlign: "center",
                     cursor: "pointer",
                     display: "flex",
+                    flexDirection: "column",
                     alignItems: "center",
                     justifyContent: "center",
-                    gap: "8px",
+                    gap: "6px",
                     color: "#2349d4",
                     fontSize: "12.5px",
-                    fontWeight: "600"
+                    fontWeight: "600",
+                    transition: "all 0.15s ease"
                   }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#eff6ff")}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#f8fafc")}
                 >
-                  <UploadCloud size={18} />
-                  <span>Klik untuk telusuri berkas atau seret berkas bukti ke sini</span>
+                  <UploadCloud size={22} />
+                  <span>Klik di sini untuk memilih berkas bukti dari perangkat Anda</span>
+                  <span style={{ fontSize: "11px", color: "#64748b", fontWeight: "normal" }}>
+                    Format didukung: PDF, JPG, PNG, DOC (Maks. 5 MB)
+                  </span>
                 </div>
 
                 {/* File Preview Pill */}
@@ -887,33 +946,33 @@ export default function PengajuanIzinPage({ user }) {
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "space-between",
-                      padding: "8px 12px",
-                      borderRadius: "8px",
-                      backgroundColor: "#ffffff",
-                      border: "1px solid #e2e8f0",
-                      marginTop: "8px"
+                      padding: "10px 14px",
+                      borderRadius: "10px",
+                      backgroundColor: "#f0fdf4",
+                      border: "1px solid #bbf7d0",
+                      marginTop: "10px"
                     }}
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                       <div
                         style={{
-                          width: "28px",
-                          height: "28px",
-                          borderRadius: "6px",
-                          backgroundColor: "#fee2e2",
-                          color: "#ef4444",
+                          width: "32px",
+                          height: "32px",
+                          borderRadius: "8px",
+                          backgroundColor: "#dcfce7",
+                          color: "#16a34a",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center"
                         }}
                       >
-                        <FileText size={15} />
+                        <FileText size={16} />
                       </div>
                       <div>
-                        <div style={{ fontSize: "12px", fontWeight: "700", color: "#0f172a" }}>
+                        <div style={{ fontSize: "12.5px", fontWeight: "700", color: "#0f172a" }}>
                           {attachedFile.name}
                         </div>
-                        <div style={{ fontSize: "10.5px", color: "#64748b" }}>
+                        <div style={{ fontSize: "11px", color: "#16a34a", fontWeight: "600" }}>
                           {attachedFile.size}
                         </div>
                       </div>
@@ -921,15 +980,21 @@ export default function PengajuanIzinPage({ user }) {
 
                     <button
                       type="button"
-                      onClick={() => setAttachedFile(null)}
+                      onClick={() => {
+                        setAttachedFile(null);
+                        setSelectedRawFile(null);
+                        if (fileInputRef.current) fileInputRef.current.value = "";
+                      }}
                       style={{
                         border: "none",
                         background: "none",
                         color: "#94a3b8",
-                        cursor: "pointer"
+                        cursor: "pointer",
+                        padding: "4px"
                       }}
+                      title="Hapus berkas"
                     >
-                      <Trash2 size={15} />
+                      <Trash2 size={16} />
                     </button>
                   </div>
                 )}

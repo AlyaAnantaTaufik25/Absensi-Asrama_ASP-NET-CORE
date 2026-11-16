@@ -271,10 +271,14 @@ export default function DataPenghuniPage() {
             onChange={(e) => setGedungFilter(e.target.value)}
             style={{ height: "38px", padding: "0 10px", borderRadius: "10px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12.5px" }}
           >
-            <option value="Semua Gedung">Semua Gedung</option>
-            <option value="Gedung A">Gedung A</option>
-            <option value="Gedung B">Gedung B</option>
-            <option value="Gedung C">Gedung C</option>
+            <option value="Semua Gedung">Semua Asrama</option>
+            <option value="Asrama Hijau">Asrama Hijau (Putra)</option>
+            <option value="Asrama Orange">Asrama Orange (Putra)</option>
+            <option value="Asrama Roesma M. Sjaaf">Asrama Roesma M. Sjaaf (Putri)</option>
+            <option value="Asrama Menpera">Asrama Menpera (Putri)</option>
+            <option value="Asrama PUPERA 1">Asrama PUPERA 1 (Putri)</option>
+            <option value="Asrama Rusunawa">Asrama Rusunawa (Putri)</option>
+            <option value="Asrama RPX">Asrama RPX (Putri)</option>
           </select>
 
           {/* Lantai */}
@@ -526,9 +530,13 @@ export default function DataPenghuniPage() {
                       ))
                     ) : (
                       <>
-                        <option value="Gedung A">Gedung A</option>
-                        <option value="Gedung B">Gedung B</option>
-                        <option value="Asrama Hijau">Asrama Hijau</option>
+                        <option value="Asrama Hijau">Asrama Hijau (Putra)</option>
+                        <option value="Asrama Orange">Asrama Orange (Putra)</option>
+                        <option value="Asrama Roesma M. Sjaaf">Asrama Roesma M. Sjaaf (Putri)</option>
+                        <option value="Asrama Menpera">Asrama Menpera (Putri)</option>
+                        <option value="Asrama PUPERA 1">Asrama PUPERA 1 (Putri)</option>
+                        <option value="Asrama Rusunawa">Asrama Rusunawa (Putri)</option>
+                        <option value="Asrama RPX">Asrama RPX (Putri)</option>
                       </>
                     )}
                   </select>

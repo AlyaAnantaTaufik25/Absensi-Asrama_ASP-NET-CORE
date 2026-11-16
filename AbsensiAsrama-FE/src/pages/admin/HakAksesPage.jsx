@@ -4,11 +4,14 @@ import { getUsers, updateUser } from "../../services/api";
 
 export default function HakAksesPage() {
   const buildingsList = [
-    "Pilih gedung fasil...",
-    "Gedung Al-Farabi",
-    "Gedung Ibnu Sina",
-    "Gedung Al-Kindi",
-    "Gedung Asrama Hijau"
+    "Pilih asrama fasil...",
+    "Asrama Hijau",
+    "Asrama Orange",
+    "Asrama Roesma M. Sjaaf",
+    "Asrama Menpera",
+    "Asrama PUPERA 1",
+    "Asrama Rusunawa",
+    "Asrama RPX"
   ];
 
   const [users, setUsers] = useState([]);

@@ -4,7 +4,6 @@ import {
   LayoutDashboard,
   ClipboardCheck,
   AlertCircle,
-  DoorOpen,
   BarChart3,
   FileText,
   LogOut
@@ -15,7 +14,6 @@ export default function FasilSidebar({ activeTab, setActiveTab, user, onLogout, 
     { id: "beranda", label: "Beranda", icon: LayoutDashboard },
     { id: "presensi", label: "Presensi lantai", icon: ClipboardCheck },
     { id: "izin", label: "Izin darurat", icon: AlertCircle, badge: emergencyCount },
-    { id: "keluar-masuk", label: "Keluar-masuk & tamu", icon: DoorOpen },
     { id: "rekap", label: "Rekap kehadiran", icon: BarChart3 },
     { id: "laporan", label: "Laporan kejadian", icon: FileText }
   ];
