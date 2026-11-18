@@ -268,6 +268,180 @@ app.MapGet("/api/presensi", async (ApplicationDbContext db) =>
     return Results.Ok(list);
 });
 
+// -------------------------------------------------
+// Endpoint Rekapitulasi Presensi Berdasarkan Role & Gedung
+// Mendukung pemisahan role (penghuni, fasil, admin) & filter 1 gedung penuh untuk fasil
+// -------------------------------------------------
+app.MapGet("/api/presensi/rekap", async (
+    string? role,
+    int? gedungId,
+    int? lantai,
+    string? search,
+    string? period,
+    DateTime? fromDate,
+    DateTime? toDate,
+    ApplicationDbContext db) =>
+{
+    var query = from u in db.Users
+                join k in db.Kamars on u.NomorKamar equals k.NoKamar into kamarGroup
+                from k in kamarGroup.DefaultIfEmpty()
+                join g in db.Gedungs on k.IdGedung equals g.IdGedung into gedungGroup
+                from g in gedungGroup.DefaultIfEmpty()
+                select new
+                {
+                    User = u,
+                    Kamar = k,
+                    Gedung = g
+                };
+
+    // Filter role pengguna jika diminta (misal: "penghuni", "fasil", "admin")
+    if (!string.IsNullOrWhiteSpace(role) && role.ToLower() != "semua")
+    {
+        var normRole = role.Trim().ToLower();
+        if (normRole == "mahasiswa") normRole = "penghuni";
+        query = query.Where(x => x.User.Role.ToLower() == normRole);
+    }
+
+    // Filter gedung (untuk Fasil yang bertanggung jawab atas 1 Gedung Penuh)
+    if (gedungId.HasValue && gedungId.Value > 0)
+    {
+        query = query.Where(x => x.Kamar != null && x.Kamar.IdGedung == gedungId.Value);
+    }
+
+    // Filter lantai (opsional jika difilter per lantai tertentu di gedung)
+    if (lantai.HasValue && lantai.Value > 0)
+    {
+        query = query.Where(x => x.Kamar != null && x.Kamar.Lantai == lantai.Value);
+    }
+
+    // Filter pencarian nama / NIM
+    if (!string.IsNullOrWhiteSpace(search))
+    {
+        var s = search.Trim().ToLower();
+        query = query.Where(x => x.User.Nama.ToLower().Contains(s) || x.User.Nim.ToLower().Contains(s));
+    }
+
+    var userList = await query.ToListAsync();
+    var userIds = userList.Select(x => x.User.IdUser).ToList();
+
+    var presensiQuery = db.Presensis.Where(p => userIds.Contains(p.IdUser));
+
+    if (fromDate.HasValue)
+    {
+        var fDate = fromDate.Value.Date;
+        presensiQuery = presensiQuery.Where(p => p.Tanggal >= fDate);
+    }
+    if (toDate.HasValue)
+    {
+        var tDate = toDate.Value.Date;
+        presensiQuery = presensiQuery.Where(p => p.Tanggal <= tDate);
+    }
+
+    var presensis = await presensiQuery.ToListAsync();
+    var allGedungs = await db.Gedungs.ToListAsync();
+
+    var result = userList.Select(x =>
+    {
+        var uPresensi = presensis.Where(p => p.IdUser == x.User.IdUser).ToList();
+        var hadir = uPresensi.Count(p => p.Status.Equals("Hadir", StringComparison.OrdinalIgnoreCase));
+        var izin = uPresensi.Count(p => p.Status.Equals("Izin", StringComparison.OrdinalIgnoreCase));
+        var sakit = uPresensi.Count(p => p.Status.Equals("Sakit", StringComparison.OrdinalIgnoreCase) ||
+                                         (p.Keterangan != null && p.Keterangan.ToLower().Contains("sakit")));
+        var alpha = uPresensi.Count(p => p.Status.Equals("Alpha", StringComparison.OrdinalIgnoreCase));
+        var terlambat = uPresensi.Count(p => p.Keterangan != null && p.Keterangan.ToLower().Contains("terlambat"));
+
+        var total = hadir + izin + sakit + alpha;
+        var percentage = total > 0 ? (int)Math.Round(((double)hadir / total) * 100) : (hadir > 0 ? 100 : 0);
+        var latest = uPresensi.OrderByDescending(p => p.Waktu).FirstOrDefault();
+
+        string namaGedung = "-";
+        int nomorLantai = 1;
+
+        if (x.User.Role.ToLower() == "penghuni" || x.User.Role.ToLower() == "mahasiswa")
+        {
+            namaGedung = x.Gedung?.NamaGedung ?? "Asrama Hijau";
+            nomorLantai = x.Kamar?.Lantai ?? 1;
+        }
+        else if (x.User.Role.ToLower() == "fasil")
+        {
+            var managed = allGedungs.FirstOrDefault(g => g.IdUser == x.User.IdUser);
+            namaGedung = managed != null ? $"{managed.NamaGedung} (Binaan)" : "Fasilitator Asrama";
+            nomorLantai = 0;
+        }
+        else if (x.User.Role.ToLower() == "admin")
+        {
+            namaGedung = "Kantor UPT Asrama";
+            nomorLantai = 0;
+        }
+
+        return new
+        {
+            idUser = x.User.IdUser,
+            nama = x.User.Nama,
+            nim = x.User.Nim,
+            role = (x.User.Role.ToLower() == "mahasiswa") ? "penghuni" : x.User.Role.ToLower(),
+            nomorKamar = x.User.NomorKamar ?? (x.User.Role.ToLower() == "penghuni" ? "HJ-101" : "-"),
+            lantai = nomorLantai,
+            idGedung = x.Kamar?.IdGedung ?? (x.User.Role.ToLower() == "penghuni" ? 1 : 0),
+            namaGedung = namaGedung,
+            hadir,
+            terlambat,
+            izin,
+            sakit,
+            alpha,
+            total,
+            percentage,
+            terakhirWaktu = latest?.Waktu,
+            terakhirStatus = latest?.Status ?? "Belum ada presensi",
+            keterangan = latest?.Keterangan ?? "-"
+        };
+    }).OrderBy(r => r.lantai).ThenBy(r => r.nomorKamar).ThenBy(r => r.nama).ToList();
+
+    return Results.Ok(new
+    {
+        success = true,
+        summary = new
+        {
+            totalUser = result.Count,
+            totalHadir = result.Sum(r => r.hadir),
+            totalTerlambat = result.Sum(r => r.terlambat),
+            totalIzin = result.Sum(r => r.izin),
+            totalSakit = result.Sum(r => r.sakit),
+            totalAlpha = result.Sum(r => r.alpha),
+            rataRataPersentase = result.Count > 0 ? Math.Round(result.Average(r => r.percentage), 1) : 0
+        },
+        data = result
+    });
+});
+
+// -------------------------------------------------
+// Ambil Informasi Gedung Binaan Fasil (Satu Gedung Penuh)
+// -------------------------------------------------
+app.MapGet("/api/gedung/fasil/{userId:int}", async (int userId, ApplicationDbContext db) =>
+{
+    var gedung = await db.Gedungs.FirstOrDefaultAsync(g => g.IdUser == userId) 
+                 ?? await db.Gedungs.FirstOrDefaultAsync();
+    if (gedung == null) return Results.NotFound(new { message = "Gedung tidak ditemukan." });
+
+    var kamars = await db.Kamars.Where(k => k.IdGedung == gedung.IdGedung).ToListAsync();
+    var lantaiList = kamars.Select(k => k.Lantai).Distinct().OrderBy(l => l).ToList();
+
+    var penghuniCount = await (from u in db.Users
+                               join k in db.Kamars on u.NomorKamar equals k.NoKamar
+                               where k.IdGedung == gedung.IdGedung && (u.Role == "penghuni" || u.Role == "mahasiswa")
+                               select u).CountAsync();
+
+    return Results.Ok(new
+    {
+        idGedung = gedung.IdGedung,
+        namaGedung = gedung.NamaGedung,
+        idUser = gedung.IdUser,
+        totalKamar = kamars.Count,
+        daftarLantai = lantaiList,
+        totalPenghuni = penghuniCount
+    });
+});
+
 app.MapPost("/api/presensi", async (CreatePresensiRequest req, ApplicationDbContext db) =>
 {
     var presensi = new Presensi
@@ -727,6 +901,92 @@ try
             }
             await dbContext.SaveChangesAsync();
         }
+    }
+
+    // Seed Sample Penghuni Asrama Hijau lintas lantai (Lantai 1, 2, 3) & presensi
+    var hasher = new Microsoft.AspNetCore.Identity.PasswordHasher<User>();
+    var samplePenghuni = new (string Nama, string Nim, string Kamar, string Jk, string Email)[]
+    {
+        // Lantai 1
+        ("Ahmad Fadhil", "2311521001", "HJ-101", "Laki-laki", "ahmad.fadhil@student.unand.ac.id"),
+        ("Budi Santoso", "2311521002", "HJ-102", "Laki-laki", "budi.santoso@student.unand.ac.id"),
+        ("Chandra Wijaya", "2311521003", "HJ-103", "Laki-laki", "chandra.w@student.unand.ac.id"),
+        // Lantai 2
+        ("Dimas Pratama", "2311522001", "HJ-201", "Laki-laki", "dimas.pratama@student.unand.ac.id"),
+        ("Eko Prasetyo", "2311522002", "HJ-202", "Laki-laki", "eko.prasetyo@student.unand.ac.id"),
+        ("Farhan Maulana", "2311522003", "HJ-203", "Laki-laki", "farhan.m@student.unand.ac.id"),
+        // Lantai 3
+        ("Genta Ramadhan", "2311523001", "HJ-301", "Laki-laki", "genta.r@student.unand.ac.id"),
+        ("Haikal Akbar", "2311523002", "HJ-303", "Laki-laki", "haikal.akbar@student.unand.ac.id"),
+        ("Ilham Saputra", "2311523004", "HJ-304", "Laki-laki", "ilham.saputra@student.unand.ac.id")
+    };
+
+    foreach (var sp in samplePenghuni)
+    {
+        var existing = await dbContext.Users.FirstOrDefaultAsync(u => u.Nim == sp.Nim || u.Email == sp.Email);
+        if (existing == null)
+        {
+            var u = new User
+            {
+                Nama = sp.Nama,
+                Nim = sp.Nim,
+                NomorKamar = sp.Kamar,
+                JenisKelamin = sp.Jk,
+                Asal = "Sumatera Barat",
+                Email = sp.Email,
+                Role = "penghuni"
+            };
+            u.Password = hasher.HashPassword(u, "asrama123");
+            dbContext.Users.Add(u);
+            await dbContext.SaveChangesAsync();
+
+            // Tambahkan data presensi sample untuk santri ini
+            var today = DateTime.Today;
+            dbContext.Presensis.AddRange(
+                new Presensi { IdUser = u.IdUser, Tanggal = today, Waktu = today.AddHours(5).AddMinutes(15), Status = "Hadir", Keterangan = "Presensi Subuh tepat waktu" },
+                new Presensi { IdUser = u.IdUser, Tanggal = today.AddDays(-1), Waktu = today.AddDays(-1).AddHours(19).AddMinutes(10), Status = "Hadir", Keterangan = "Presensi Malam mushala" },
+                new Presensi { IdUser = u.IdUser, Tanggal = today.AddDays(-2), Waktu = today.AddDays(-2).AddHours(5).AddMinutes(20), Status = "Hadir", Keterangan = "Hadir Subuh berjamaah" },
+                new Presensi { IdUser = u.IdUser, Tanggal = today.AddDays(-3), Waktu = today.AddDays(-3).AddHours(18).AddMinutes(45), Status = (sp.Nim.EndsWith("1") ? "Izin" : "Hadir"), Keterangan = (sp.Nim.EndsWith("1") ? "Izin kegiatan akademik kampus" : "Presensi tepat waktu") }
+            );
+            await dbContext.SaveChangesAsync();
+        }
+        else if (existing.NomorKamar == null || existing.NomorKamar != sp.Kamar)
+        {
+            existing.NomorKamar = sp.Kamar;
+            await dbContext.SaveChangesAsync();
+        }
+    }
+
+    // Pastikan Alya Ananta (penghuni@demo.com) memiliki kamar HJ-302 (Lantai 3 Asrama Hijau)
+    var alya = await dbContext.Users.FirstOrDefaultAsync(u => u.Email == "penghuni@demo.com");
+    if (alya != null && (alya.NomorKamar == null || alya.NomorKamar == ""))
+    {
+        alya.NomorKamar = "HJ-302";
+        await dbContext.SaveChangesAsync();
+    }
+
+    // Tambahkan sample presensi untuk Fasil & Admin jika belum ada
+    if (fasilUser != null && !await dbContext.Presensis.AnyAsync(p => p.IdUser == fasilUser.IdUser))
+    {
+        var today = DateTime.Today;
+        dbContext.Presensis.AddRange(
+            new Presensi { IdUser = fasilUser.IdUser, Tanggal = today, Waktu = today.AddHours(4).AddMinutes(50), Status = "Hadir", Keterangan = "Monitoring presensi Subuh Asrama Hijau" },
+            new Presensi { IdUser = fasilUser.IdUser, Tanggal = today.AddDays(-1), Waktu = today.AddDays(-1).AddHours(18).AddMinutes(20), Status = "Hadir", Keterangan = "Piket pengawasan sholat Maghrib & Isya" },
+            new Presensi { IdUser = fasilUser.IdUser, Tanggal = today.AddDays(-2), Waktu = today.AddDays(-2).AddHours(5).AddMinutes(10), Status = "Hadir", Keterangan = "Piket pagi asrama" }
+        );
+        await dbContext.SaveChangesAsync();
+    }
+
+    var adminUser = await dbContext.Users.FirstOrDefaultAsync(u => u.Role == "admin");
+    if (adminUser != null && !await dbContext.Presensis.AnyAsync(p => p.IdUser == adminUser.IdUser))
+    {
+        var today = DateTime.Today;
+        dbContext.Presensis.AddRange(
+            new Presensi { IdUser = adminUser.IdUser, Tanggal = today, Waktu = today.AddHours(7).AddMinutes(45), Status = "Hadir", Keterangan = "Presensi kehadiran kantor UPT Asrama" },
+            new Presensi { IdUser = adminUser.IdUser, Tanggal = today.AddDays(-1), Waktu = today.AddDays(-1).AddHours(7).AddMinutes(50), Status = "Hadir", Keterangan = "Hadir kerja tepat waktu" },
+            new Presensi { IdUser = adminUser.IdUser, Tanggal = today.AddDays(-2), Waktu = today.AddDays(-2).AddHours(8).AddMinutes(0), Status = "Hadir", Keterangan = "Hadir jam dinas" }
+        );
+        await dbContext.SaveChangesAsync();
     }
 }
 catch { }

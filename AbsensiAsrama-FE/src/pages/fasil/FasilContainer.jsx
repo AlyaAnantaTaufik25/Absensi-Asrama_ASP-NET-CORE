@@ -45,7 +45,7 @@ export default function FasilContainer({ user, onLogout }) {
           )}
 
           {activeTab === "presensi" && (
-            <PresensiLantaiPage />
+            <PresensiLantaiPage user={user} />
           )}
 
           {activeTab === "izin" && (
@@ -57,7 +57,7 @@ export default function FasilContainer({ user, onLogout }) {
           )}
 
           {activeTab === "rekap" && (
-            <RekapKehadiranPage />
+            <RekapKehadiranPage user={user} />
           )}
 
           {activeTab === "laporan" && (

@@ -3,7 +3,7 @@ import { Check, X, Search, Filter, RotateCcw, UserCheck, AlertCircle, Clock, Dow
 import { getUsers, getPresensi, recordPresensi } from "../../services/api";
 import { downloadCSV, printOfficialDocument } from "../../utils/exportUtils";
 
-export default function PresensiLantaiPage() {
+export default function PresensiLantaiPage({ user }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [manualStatus, setManualStatus] = useState("Hadir");

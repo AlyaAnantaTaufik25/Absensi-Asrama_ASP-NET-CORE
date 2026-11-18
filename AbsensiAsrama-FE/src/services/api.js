@@ -395,5 +395,45 @@ export async function getStats() {
   }
 }
 
+/**
+ * Rekapitulasi Presensi Berdasarkan Role & Gedung
+ * @param {object} params { role, gedungId, lantai, search, fromDate, toDate }
+ */
+export async function getRekapPresensi(params = {}) {
+  try {
+    const query = new URLSearchParams();
+    if (params.role) query.append("role", params.role);
+    if (params.gedungId) query.append("gedungId", params.gedungId);
+    if (params.lantai) query.append("lantai", params.lantai);
+    if (params.search) query.append("search", params.search);
+    if (params.fromDate) query.append("fromDate", params.fromDate);
+    if (params.toDate) query.append("toDate", params.toDate);
+
+    const url = `${API_BASE_URL}/api/presensi/rekap${query.toString() ? "?" + query.toString() : ""}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("Gagal mengambil data rekapitulasi presensi");
+    return await res.json();
+  } catch (err) {
+    console.warn("Backend rekap presensi error:", err);
+    return { success: false, summary: {}, data: [] };
+  }
+}
+
+/**
+ * Ambil data gedung binaan Fasil beserta daftar lantai & jumlah penghuni
+ * @param {number} userId ID User milik Fasil
+ */
+export async function getGedungFasil(userId) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/gedung/fasil/${userId}`);
+    if (!res.ok) throw new Error("Gagal mengambil gedung binaan fasil");
+    return await res.json();
+  } catch (err) {
+    console.warn("Backend gedung fasil error:", err);
+    return null;
+  }
+}
+
+
 
 

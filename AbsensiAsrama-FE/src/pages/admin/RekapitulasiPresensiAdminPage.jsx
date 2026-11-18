@@ -1,147 +1,263 @@
-import React, { useState, useEffect } from "react";
-import { ArrowUpDown, RotateCcw, Filter, CheckCircle2, Download, Printer } from "lucide-react";
-import { getPresensi, getUsers } from "../../services/api";
+import React, { useState, useEffect, useMemo } from "react";
+import {
+  ArrowUpDown,
+  RotateCcw,
+  Filter,
+  CheckCircle2,
+  Download,
+  Printer,
+  Search,
+  Users,
+  UserCheck,
+  Shield,
+  Building,
+  Calendar,
+  Layers
+} from "lucide-react";
+import { getRekapPresensi, getGedung } from "../../services/api";
 import { downloadCSV, printOfficialDocument } from "../../utils/exportUtils";
 
 export default function RekapitulasiPresensiAdminPage() {
-  const [period, setPeriod] = useState("Bulan ini");
+  // Role Tabs: "semua" | "penghuni" | "fasil" | "admin"
+  const [activeRoleTab, setActiveRoleTab] = useState("semua");
+
+  // Filters
+  const [searchQuery, setSearchQuery] = useState("");
+  const [buildingFilter, setBuildingFilter] = useState("SEMUA");
+  const [floorFilter, setFloorFilter] = useState("SEMUA");
+  const [periodFilter, setPeriodFilter] = useState("Bulan ini");
   const [fromDate, setFromDate] = useState("2026-10-01");
-  const [toDate, setToDate] = useState("2026-10-20");
-  const [building, setBuilding] = useState("SEMUA");
-  const [floor, setFloor] = useState("SEMUA");
-  const [room, setRoom] = useState("SEMUA");
-  const [session, setSession] = useState("SEMUA");
+  const [toDate, setToDate] = useState("2026-11-20");
 
-  const [appliedFilterNotice, setAppliedFilterNotice] = useState("");
+  const [loading, setLoading] = useState(true);
   const [rawData, setRawData] = useState([]);
-  const [filteredList, setFilteredList] = useState([]);
+  const [gedungList, setGedungList] = useState([]);
+  const [appliedFilterNotice, setAppliedFilterNotice] = useState("");
 
+  // Load Data dari backend
   useEffect(() => {
-    async function loadData() {
+    async function fetchData() {
+      setLoading(true);
       try {
-        const [presensi, users] = await Promise.all([getPresensi(), getUsers()]);
-        if (Array.isArray(users) && users.length > 0) {
-          const mapped = users.map((u, idx) => {
-            const userPresensi = Array.isArray(presensi) ? presensi.filter((p) => p.idUser === u.idUser) : [];
-            const hadir = userPresensi.filter((p) => p.status === "Hadir").length;
-            const izin = userPresensi.filter((p) => p.status === "Izin").length;
-            const alpha = userPresensi.filter((p) => p.status === "Alpha").length;
-            const total = hadir + izin + alpha;
-            const pct = total > 0 ? Math.round((hadir / total) * 100) : 0;
-            return {
-              id: u.idUser || idx + 1,
-              name: u.nama,
-              nim: u.nim,
-              location: u.nomorKamar ? `Kamar ${u.nomorKamar}` : "Asrama Hijau",
-              building: "Asrama Hijau",
-              floor: "Lantai 1",
-              room: u.nomorKamar || "-",
-              hadir: hadir,
-              terlambat: 0,
-              izin: izin,
-              alpha: alpha,
-              percentage: pct
-            };
-          });
-          setRawData(mapped);
-          setFilteredList(mapped);
+        const [rekapRes, gedungs] = await Promise.all([
+          getRekapPresensi(),
+          getGedung()
+        ]);
+
+        if (rekapRes && Array.isArray(rekapRes.data)) {
+          setRawData(rekapRes.data);
         } else {
           setRawData([]);
-          setFilteredList([]);
+        }
+
+        if (Array.isArray(gedungs)) {
+          setGedungList(gedungs);
         }
       } catch (err) {
-        console.warn("Gagal memuat rekap:", err);
+        console.warn("Gagal memuat rekap presensi admin:", err);
+      } finally {
+        setLoading(false);
       }
     }
-    loadData();
+    fetchData();
   }, []);
 
-  const handleApplyFilter = () => {
-    let result = rawData;
-    if (building !== "SEMUA") {
-      result = result.filter((item) => item.building === building);
-    }
-    if (floor !== "SEMUA") {
-      result = result.filter((item) => item.floor === floor);
-    }
-    if (room !== "SEMUA") {
-      result = result.filter((item) => item.room === room);
-    }
+  // Hitung jumlah anggota untuk tiap kategori tab
+  const roleCounts = useMemo(() => {
+    return {
+      semua: rawData.length,
+      penghuni: rawData.filter((r) => r.role === "penghuni" || r.role === "mahasiswa").length,
+      fasil: rawData.filter((r) => r.role === "fasil").length,
+      admin: rawData.filter((r) => r.role === "admin").length
+    };
+  }, [rawData]);
 
-    setFilteredList(result);
-    setAppliedFilterNotice("Filter berhasil diterapkan.");
-    setTimeout(() => setAppliedFilterNotice(""), 3000);
-  };
+  // Data yang difilter berdasarkan role tab dan kriteria filter lainnya
+  const filteredList = useMemo(() => {
+    return rawData.filter((item) => {
+      // 1. Filter Role Tab
+      if (activeRoleTab !== "semua") {
+        if (activeRoleTab === "penghuni") {
+          if (item.role !== "penghuni" && item.role !== "mahasiswa") return false;
+        } else if (item.role !== activeRoleTab) {
+          return false;
+        }
+      }
+
+      // 2. Filter Search (Nama / NIM)
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchName = item.nama?.toLowerCase().includes(q);
+        const matchNim = item.nim?.toLowerCase().includes(q);
+        const matchRoom = item.nomorKamar?.toLowerCase().includes(q);
+        if (!matchName && !matchNim && !matchRoom) return false;
+      }
+
+      // 3. Filter Gedung
+      if (buildingFilter !== "SEMUA") {
+        if (!item.namaGedung?.toLowerCase().includes(buildingFilter.toLowerCase())) {
+          return false;
+        }
+      }
+
+      // 4. Filter Lantai
+      if (floorFilter !== "SEMUA") {
+        const fl = parseInt(floorFilter.replace(/\D/g, ""), 10);
+        if (!isNaN(fl) && item.lantai !== fl) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [rawData, activeRoleTab, searchQuery, buildingFilter, floorFilter]);
+
+  // Ringkasan Total untuk Kategori yang Aktif
+  const summaryStats = useMemo(() => {
+    const totalUser = filteredList.length;
+    const totalHadir = filteredList.reduce((acc, c) => acc + (c.hadir || 0), 0);
+    const totalIzin = filteredList.reduce((acc, c) => acc + (c.izin || 0), 0);
+    const totalSakit = filteredList.reduce((acc, c) => acc + (c.sakit || 0), 0);
+    const totalAlpha = filteredList.reduce((acc, c) => acc + (c.alpha || 0), 0);
+    const avgPct =
+      totalUser > 0
+        ? Math.round(
+            filteredList.reduce((acc, c) => acc + (c.percentage || 0), 0) / totalUser
+          )
+        : 0;
+
+    return {
+      totalUser,
+      totalHadir,
+      totalIzin,
+      totalSakit,
+      totalAlpha,
+      avgPct
+    };
+  }, [filteredList]);
 
   const handleResetFilter = () => {
-    setPeriod("Bulan ini");
-    setFromDate("2026-10-01");
-    setToDate("2026-10-20");
-    setBuilding("SEMUA");
-    setFloor("SEMUA");
-    setRoom("SEMUA");
-    setSession("SEMUA");
-    setFilteredList(rawData);
+    setSearchQuery("");
+    setBuildingFilter("SEMUA");
+    setFloorFilter("SEMUA");
+    setPeriodFilter("Bulan ini");
     setAppliedFilterNotice("Filter direset ke nilai awal.");
     setTimeout(() => setAppliedFilterNotice(""), 3000);
   };
 
-  // Aggregated totals
-  const totalHadir = filteredList.reduce((acc, curr) => acc + curr.hadir, 0);
-  const totalTerlambat = filteredList.reduce((acc, curr) => acc + curr.terlambat, 0);
-  const totalIzin = filteredList.reduce((acc, curr) => acc + curr.izin, 0);
-  const totalAlpha = filteredList.reduce((acc, curr) => acc + curr.alpha, 0);
-  const avgPercentage =
-    filteredList.length > 0
-      ? Math.round(
-          filteredList.reduce((acc, curr) => acc + curr.percentage, 0) /
-            filteredList.length
-        )
-      : 0;
-
+  // Ekspor Laporan CSV
   const handleExportCSV = () => {
     if (filteredList.length === 0) {
       alert("Tidak ada data presensi untuk diekspor.");
       return;
     }
-    const headers = ["No", "NIM", "Nama Lengkap", "Gedung Asrama", "Nomor Kamar", "Hadir", "Izin", "Alpha", "Persentase Kehadiran"];
+
+    const headers = [
+      "No",
+      "NIM / ID",
+      "Nama Lengkap",
+      "Peran (Role)",
+      "Gedung Asrama",
+      "Kamar / Lantai",
+      "Hadir",
+      "Izin",
+      "Sakit",
+      "Alpha",
+      "Persentase Kehadiran"
+    ];
+
     const rows = filteredList.map((r, i) => [
       i + 1,
       r.nim,
-      r.name,
-      r.building,
-      r.room,
+      r.nama,
+      r.role.toUpperCase(),
+      r.namaGedung,
+      r.nomorKamar !== "-" ? `${r.nomorKamar} (Lt. ${r.lantai})` : "-",
       r.hadir,
       r.izin,
+      r.sakit,
       r.alpha,
       `${r.percentage}%`
     ]);
-    downloadCSV(`Rekap_Presensi_Admin_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+
+    const roleLabel =
+      activeRoleTab === "semua"
+        ? "Semua_Pengguna"
+        : activeRoleTab.charAt(0).toUpperCase() + activeRoleTab.slice(1);
+
+    downloadCSV(
+      `Rekap_Presensi_${roleLabel}_${new Date().toISOString().slice(0, 10)}.csv`,
+      headers,
+      rows
+    );
   };
 
+  // Cetak Dokumen PDF Resmi
   const handlePrintPDF = () => {
     if (filteredList.length === 0) {
       alert("Tidak ada data presensi untuk dicetak.");
       return;
     }
-    const headers = ["NIM", "Nama Mahasiswa", "Gedung", "Kamar", "Hadir", "Izin", "Alpha", "Kepatuhan"];
+
+    const roleTitleMap = {
+      semua: "REKAPITULASI PRESENSI SELURUH CIVITAS ASRAMA",
+      penghuni: "REKAPITULASI PRESENSI MAHASISWA PENGHUNI ASRAMA",
+      fasil: "REKAPITULASI KEHADIRAN & PIKET FASILITATOR ASRAMA",
+      admin: "REKAPITULASI KEHADIRAN STAF PENGELOLA UPT ASRAMA"
+    };
+
+    const headers = [
+      "NIM / ID",
+      "Nama Lengkap",
+      "Peran",
+      "Lokasi / Gedung",
+      "Hadir",
+      "Izin",
+      "Sakit",
+      "Alpha",
+      "Kepatuhan"
+    ];
+
     const rows = filteredList.map((r) => [
       r.nim,
-      r.name,
-      r.building,
-      r.room,
+      r.nama,
+      r.role.toUpperCase(),
+      r.nomorKamar !== "-" ? `${r.namaGedung} (${r.nomorKamar})` : r.namaGedung,
       r.hadir,
       r.izin,
+      r.sakit,
       r.alpha,
       `${r.percentage}%`
     ]);
+
     printOfficialDocument({
-      title: "REKAPITULASI PRESENSI MAHASISWA ASRAMA UNIVERSITAS ANDALAS",
-      subtitle: "Laporan Tingkat Kehadiran Harian Santri Seluruh Gedung Asrama",
+      title: roleTitleMap[activeRoleTab] || "REKAPITULASI PRESENSI ASRAMA",
+      subtitle: "Laporan Kehadiran Terintegrasi UPT Asrama Mahasiswa Universitas Andalas",
       metaInfo: [
-        { label: "Unit Kerja", value: "Bagian Administrasi & Kemahasiswaan UPT Asrama Unand" },
-        { label: "Total Mahasiswa", value: `${filteredList.length} Mahasiswa Tercatat` },
-        { label: "Rata-rata Kehadiran", value: `${avgPercentage}% (${totalHadir} Hadir, ${totalIzin} Izin, ${totalAlpha} Alpha)` }
+        {
+          label: "Kategori Pengguna",
+          value:
+            activeRoleTab === "semua"
+              ? "Semua Kategori (Penghuni, Fasil, Admin)"
+              : activeRoleTab.toUpperCase()
+        },
+        {
+          label: "Total Pengguna",
+          value: `${filteredList.length} Orang Terdaftar`
+        },
+        {
+          label: "Ringkasan Kehadiran",
+          value: `${summaryStats.totalHadir} Hadir · ${summaryStats.totalIzin} Izin · ${summaryStats.totalSakit} Sakit · ${summaryStats.totalAlpha} Alpha (Rata-rata: ${summaryStats.avgPct}%)`
+        },
+        {
+          label: "Tanggal Cetak",
+          value: new Date().toLocaleDateString("id-ID", {
+            weekday: "long",
+            day: "numeric",
+            month: "long",
+            year: "numeric"
+          })
+        }
       ],
       headers,
       rows,
@@ -150,9 +266,43 @@ export default function RekapitulasiPresensiAdminPage() {
     });
   };
 
+  const getRoleBadge = (role) => {
+    switch (role?.toLowerCase()) {
+      case "penghuni":
+      case "mahasiswa":
+        return {
+          bg: "#eff6ff",
+          color: "#1e40af",
+          border: "#bfdbfe",
+          label: "Penghuni"
+        };
+      case "fasil":
+        return {
+          bg: "#f5f3ff",
+          color: "#6d28d9",
+          border: "#ddd6fe",
+          label: "Fasilitator"
+        };
+      case "admin":
+        return {
+          bg: "#f0fdf4",
+          color: "#166534",
+          border: "#bbf7d0",
+          label: "Administrator"
+        };
+      default:
+        return {
+          bg: "#f1f5f9",
+          color: "#475569",
+          border: "#cbd5e1",
+          label: role || "User"
+        };
+    }
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-      {/* 1. Header with Export Actions */}
+      {/* 1. Header with Title & Export Actions */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: "16px" }}>
         <div>
           <div
@@ -165,7 +315,7 @@ export default function RekapitulasiPresensiAdminPage() {
               marginBottom: "4px"
             }}
           >
-            LAPORAN PRESENSI
+            PANEL ADMINISTRATOR
           </div>
           <h1
             style={{
@@ -176,14 +326,14 @@ export default function RekapitulasiPresensiAdminPage() {
               letterSpacing: "-0.5px"
             }}
           >
-            Rekapitulasi Presensi
+            Rekapitulasi Presensi Terintegrasi
           </h1>
           <p style={{ margin: 0, fontSize: "13.5px", color: "#64748b" }}>
-            Ringkasan performa presensi setiap penghuni terdaftar.
+            Monitoring kehadiran seluruh civitas asrama dengan pemisahan peran (*role*): Penghuni, Fasil, dan Administrator.
           </p>
         </div>
 
-        {/* Export Buttons */}
+        {/* Action Buttons */}
         <div style={{ display: "flex", gap: "10px" }}>
           <button
             type="button"
@@ -191,8 +341,8 @@ export default function RekapitulasiPresensiAdminPage() {
             style={{
               display: "inline-flex",
               alignItems: "center",
-              gap: "6px",
-              padding: "9px 16px",
+              gap: "7px",
+              padding: "10px 16px",
               borderRadius: "10px",
               border: "1px solid #cbd5e1",
               backgroundColor: "#ffffff",
@@ -200,20 +350,22 @@ export default function RekapitulasiPresensiAdminPage() {
               fontSize: "13px",
               fontWeight: "700",
               cursor: "pointer",
-              boxShadow: "0 1px 2px rgba(0,0,0,0.03)"
+              boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
+              transition: "all 0.15s ease"
             }}
           >
             <Printer size={15} color="#2563eb" />
-            Cetak PDF Resmi
+            <span>Cetak PDF Resmi</span>
           </button>
+
           <button
             type="button"
             onClick={handleExportCSV}
             style={{
               display: "inline-flex",
               alignItems: "center",
-              gap: "6px",
-              padding: "9px 18px",
+              gap: "7px",
+              padding: "10px 18px",
               borderRadius: "10px",
               border: "none",
               backgroundColor: "#2563eb",
@@ -221,11 +373,12 @@ export default function RekapitulasiPresensiAdminPage() {
               fontSize: "13px",
               fontWeight: "700",
               cursor: "pointer",
-              boxShadow: "0 4px 12px rgba(37, 99, 235, 0.25)"
+              boxShadow: "0 4px 12px rgba(37, 99, 235, 0.25)",
+              transition: "all 0.15s ease"
             }}
           >
             <Download size={15} />
-            Ekspor Laporan (.CSV / Excel)
+            <span>Ekspor Excel (.csv)</span>
           </button>
         </div>
       </div>
@@ -250,475 +403,509 @@ export default function RekapitulasiPresensiAdminPage() {
         </div>
       )}
 
-      {/* 2. Filter Card */}
+      {/* 2. TAB NAVIGASI KHUSUS ROLE (Semua | Penghuni | Fasil | Admin) */}
+      <div
+        style={{
+          display: "flex",
+          gap: "8px",
+          borderBottom: "2px solid #e2e8f0",
+          paddingBottom: "2px",
+          overflowX: "auto"
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setActiveRoleTab("semua")}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "8px",
+            padding: "10px 18px",
+            border: "none",
+            borderBottom: activeRoleTab === "semua" ? "3px solid #2563eb" : "3px solid transparent",
+            backgroundColor: "transparent",
+            color: activeRoleTab === "semua" ? "#1d4ed8" : "#64748b",
+            fontWeight: activeRoleTab === "semua" ? "800" : "600",
+            fontSize: "13.5px",
+            cursor: "pointer",
+            transition: "all 0.15s ease"
+          }}
+        >
+          <Users size={16} />
+          <span>Semua Pengguna</span>
+          <span
+            style={{
+              padding: "2px 8px",
+              borderRadius: "999px",
+              fontSize: "11px",
+              fontWeight: "700",
+              backgroundColor: activeRoleTab === "semua" ? "#eff6ff" : "#f1f5f9",
+              color: activeRoleTab === "semua" ? "#1e40af" : "#64748b"
+            }}
+          >
+            {roleCounts.semua}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveRoleTab("penghuni")}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "8px",
+            padding: "10px 18px",
+            border: "none",
+            borderBottom: activeRoleTab === "penghuni" ? "3px solid #2563eb" : "3px solid transparent",
+            backgroundColor: "transparent",
+            color: activeRoleTab === "penghuni" ? "#1d4ed8" : "#64748b",
+            fontWeight: activeRoleTab === "penghuni" ? "800" : "600",
+            fontSize: "13.5px",
+            cursor: "pointer",
+            transition: "all 0.15s ease"
+          }}
+        >
+          <Building size={16} />
+          <span>Penghuni Asrama</span>
+          <span
+            style={{
+              padding: "2px 8px",
+              borderRadius: "999px",
+              fontSize: "11px",
+              fontWeight: "700",
+              backgroundColor: activeRoleTab === "penghuni" ? "#eff6ff" : "#f1f5f9",
+              color: activeRoleTab === "penghuni" ? "#1e40af" : "#64748b"
+            }}
+          >
+            {roleCounts.penghuni}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveRoleTab("fasil")}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "8px",
+            padding: "10px 18px",
+            border: "none",
+            borderBottom: activeRoleTab === "fasil" ? "3px solid #7c3aed" : "3px solid transparent",
+            backgroundColor: "transparent",
+            color: activeRoleTab === "fasil" ? "#6d28d9" : "#64748b",
+            fontWeight: activeRoleTab === "fasil" ? "800" : "600",
+            fontSize: "13.5px",
+            cursor: "pointer",
+            transition: "all 0.15s ease"
+          }}
+        >
+          <UserCheck size={16} />
+          <span>Fasilitator (Fasil)</span>
+          <span
+            style={{
+              padding: "2px 8px",
+              borderRadius: "999px",
+              fontSize: "11px",
+              fontWeight: "700",
+              backgroundColor: activeRoleTab === "fasil" ? "#f5f3ff" : "#f1f5f9",
+              color: activeRoleTab === "fasil" ? "#6d28d9" : "#64748b"
+            }}
+          >
+            {roleCounts.fasil}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveRoleTab("admin")}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "8px",
+            padding: "10px 18px",
+            border: "none",
+            borderBottom: activeRoleTab === "admin" ? "3px solid #059669" : "3px solid transparent",
+            backgroundColor: "transparent",
+            color: activeRoleTab === "admin" ? "#047857" : "#64748b",
+            fontWeight: activeRoleTab === "admin" ? "800" : "600",
+            fontSize: "13.5px",
+            cursor: "pointer",
+            transition: "all 0.15s ease"
+          }}
+        >
+          <Shield size={16} />
+          <span>Administrator</span>
+          <span
+            style={{
+              padding: "2px 8px",
+              borderRadius: "999px",
+              fontSize: "11px",
+              fontWeight: "700",
+              backgroundColor: activeRoleTab === "admin" ? "#ecfdf5" : "#f1f5f9",
+              color: activeRoleTab === "admin" ? "#047857" : "#64748b"
+            }}
+          >
+            {roleCounts.admin}
+          </span>
+        </button>
+      </div>
+
+      {/* 3. Summary KPI Cards Dinamis untuk Kategori Terpilih */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+          gap: "16px"
+        }}
+      >
+        <div style={{ backgroundColor: "#ffffff", padding: "18px 20px", borderRadius: "14px", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.03)" }}>
+          <div style={{ fontSize: "11.5px", fontWeight: "700", color: "#64748b", textTransform: "uppercase", marginBottom: "6px" }}>
+            Total Subjek ({activeRoleTab.toUpperCase()})
+          </div>
+          <div style={{ fontSize: "24px", fontWeight: "800", color: "#0f172a" }}>
+            {summaryStats.totalUser} <span style={{ fontSize: "13px", fontWeight: "600", color: "#64748b" }}>Orang</span>
+          </div>
+          <div style={{ fontSize: "11px", color: "#2563eb", fontWeight: "600", marginTop: "4px" }}>
+            {activeRoleTab === "semua" ? "Seluruh Civitas Asrama" : `Kategori ${activeRoleTab}`}
+          </div>
+        </div>
+
+        <div style={{ backgroundColor: "#ffffff", padding: "18px 20px", borderRadius: "14px", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.03)" }}>
+          <div style={{ fontSize: "11.5px", fontWeight: "700", color: "#166534", textTransform: "uppercase", marginBottom: "6px" }}>
+            Total Hadir
+          </div>
+          <div style={{ fontSize: "24px", fontWeight: "800", color: "#15803d" }}>
+            {summaryStats.totalHadir} <span style={{ fontSize: "13px", fontWeight: "600", color: "#64748b" }}>Sesi</span>
+          </div>
+          <div style={{ fontSize: "11px", color: "#16a34a", fontWeight: "600", marginTop: "4px" }}>
+            Tercatat di sistem
+          </div>
+        </div>
+
+        <div style={{ backgroundColor: "#ffffff", padding: "18px 20px", borderRadius: "14px", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.03)" }}>
+          <div style={{ fontSize: "11.5px", fontWeight: "700", color: "#1e40af", textTransform: "uppercase", marginBottom: "6px" }}>
+            Total Izin / Sakit
+          </div>
+          <div style={{ fontSize: "24px", fontWeight: "800", color: "#2563eb" }}>
+            {summaryStats.totalIzin + summaryStats.totalSakit} <span style={{ fontSize: "13px", fontWeight: "600", color: "#64748b" }}>Sesi</span>
+          </div>
+          <div style={{ fontSize: "11px", color: "#64748b", marginTop: "4px" }}>
+            {summaryStats.totalIzin} Izin · {summaryStats.totalSakit} Sakit
+          </div>
+        </div>
+
+        <div style={{ backgroundColor: "#ffffff", padding: "18px 20px", borderRadius: "14px", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.03)" }}>
+          <div style={{ fontSize: "11.5px", fontWeight: "700", color: "#b91c1c", textTransform: "uppercase", marginBottom: "6px" }}>
+            Total Alpha / Belum
+          </div>
+          <div style={{ fontSize: "24px", fontWeight: "800", color: "#dc2626" }}>
+            {summaryStats.totalAlpha} <span style={{ fontSize: "13px", fontWeight: "600", color: "#64748b" }}>Sesi</span>
+          </div>
+          <div style={{ fontSize: "11px", color: "#b91c1c", fontWeight: "600", marginTop: "4px" }}>
+            Tanpa keterangan
+          </div>
+        </div>
+
+        <div style={{ backgroundColor: "#ffffff", padding: "18px 20px", borderRadius: "14px", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.03)" }}>
+          <div style={{ fontSize: "11.5px", fontWeight: "700", color: "#64748b", textTransform: "uppercase", marginBottom: "6px" }}>
+            Rata-rata Kepatuhan
+          </div>
+          <div style={{ fontSize: "24px", fontWeight: "800", color: summaryStats.avgPct >= 80 ? "#15803d" : "#ea580c" }}>
+            {summaryStats.avgPct}%
+          </div>
+          <div style={{ fontSize: "11px", color: "#64748b", marginTop: "4px" }}>
+            Tingkat kehadiran kelompok
+          </div>
+        </div>
+      </div>
+
+      {/* 4. Filter Bar */}
       <div
         style={{
           backgroundColor: "#ffffff",
-          borderRadius: "18px",
+          borderRadius: "16px",
           border: "1px solid #e2e8f0",
-          padding: "20px 24px",
-          boxShadow: "0 2px 6px rgba(0, 0, 0, 0.03)"
+          padding: "16px 20px",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "14px",
+          alignItems: "center",
+          justifyContent: "space-between"
         }}
       >
-        {/* Filter Inputs Grid */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1.2fr 1.3fr 1.3fr 1fr 1fr 1fr 1fr",
-            gap: "12px",
-            marginBottom: "18px",
-            alignItems: "flex-end"
-          }}
-        >
-          {/* Periode */}
-          <div>
-            <label style={{ display: "block", fontSize: "11px", fontWeight: "700", color: "#64748b", marginBottom: "6px", textTransform: "uppercase" }}>
-              PERIODE
-            </label>
-            <select
-              value={period}
-              onChange={(e) => setPeriod(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "8px 10px",
-                borderRadius: "8px",
-                border: "1px solid #cbd5e1",
-                fontSize: "12.5px",
-                backgroundColor: "#ffffff",
-                color: "#0f172a",
-                outline: "none"
-              }}
-            >
-              <option value="Bulan ini">Bulan ini</option>
-              <option value="Minggu ini">Minggu ini</option>
-              <option value="Hari ini">Hari ini</option>
-              <option value="Kustom">Kustom</option>
-            </select>
-          </div>
-
-          {/* Dari Tanggal */}
-          <div>
-            <label style={{ display: "block", fontSize: "11px", fontWeight: "700", color: "#64748b", marginBottom: "6px", textTransform: "uppercase" }}>
-              DARI TANGGAL
-            </label>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "center", flex: "1 1 500px" }}>
+          {/* Search Input */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              backgroundColor: "#f8fafc",
+              border: "1px solid #cbd5e1",
+              borderRadius: "10px",
+              padding: "7px 12px",
+              flex: "1 1 200px"
+            }}
+          >
+            <Search size={15} color="#94a3b8" />
             <input
-              type="date"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
+              type="text"
+              placeholder="Cari nama, NIM, atau nomor kamar..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
               style={{
-                width: "100%",
-                padding: "7px 10px",
-                borderRadius: "8px",
-                border: "1px solid #cbd5e1",
-                fontSize: "12.5px",
-                color: "#0f172a",
+                border: "none",
+                backgroundColor: "transparent",
                 outline: "none",
-                boxSizing: "border-box"
+                fontSize: "13px",
+                width: "100%",
+                color: "#0f172a"
               }}
             />
           </div>
 
-          {/* Sampai Tanggal */}
-          <div>
-            <label style={{ display: "block", fontSize: "11px", fontWeight: "700", color: "#64748b", marginBottom: "6px", textTransform: "uppercase" }}>
-              SAMPAI TANGGAL
-            </label>
-            <input
-              type="date"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
+          {/* Filter Gedung */}
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <span style={{ fontSize: "12px", fontWeight: "700", color: "#64748b" }}>Gedung:</span>
+            <select
+              value={buildingFilter}
+              onChange={(e) => setBuildingFilter(e.target.value)}
               style={{
-                width: "100%",
-                padding: "7px 10px",
+                padding: "7px 12px",
                 borderRadius: "8px",
                 border: "1px solid #cbd5e1",
+                backgroundColor: "#ffffff",
                 fontSize: "12.5px",
                 color: "#0f172a",
                 outline: "none",
-                boxSizing: "border-box"
-              }}
-            />
-          </div>
-
-          {/* Gedung */}
-          <div>
-            <label style={{ display: "block", fontSize: "11px", fontWeight: "700", color: "#64748b", marginBottom: "6px", textTransform: "uppercase" }}>
-              GEDUNG
-            </label>
-            <select
-              value={building}
-              onChange={(e) => setBuilding(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "8px 10px",
-                borderRadius: "8px",
-                border: "1px solid #cbd5e1",
-                fontSize: "12.5px",
-                backgroundColor: "#ffffff",
-                color: "#0f172a",
-                outline: "none"
+                cursor: "pointer"
               }}
             >
-              <option value="SEMUA">SEMUA</option>
-              <option value="Asrama Hijau">Asrama Hijau</option>
-              <option value="Asrama Orange">Asrama Orange</option>
-              <option value="Asrama Roesma M. Sjaaf">Asrama Roesma M. Sjaaf</option>
-              <option value="Asrama Menpera">Asrama Menpera</option>
-              <option value="Asrama PUPERA 1">Asrama PUPERA 1</option>
-              <option value="Asrama Rusunawa">Asrama Rusunawa</option>
-              <option value="Asrama RPX">Asrama RPX</option>
+              <option value="SEMUA">Semua Gedung</option>
+              {gedungList.map((g) => (
+                <option key={g.idGedung} value={g.namaGedung}>
+                  {g.namaGedung}
+                </option>
+              ))}
             </select>
           </div>
 
-          {/* Lantai */}
-          <div>
-            <label style={{ display: "block", fontSize: "11px", fontWeight: "700", color: "#64748b", marginBottom: "6px", textTransform: "uppercase" }}>
-              LANTAI
-            </label>
+          {/* Filter Lantai */}
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <span style={{ fontSize: "12px", fontWeight: "700", color: "#64748b" }}>Lantai:</span>
             <select
-              value={floor}
-              onChange={(e) => setFloor(e.target.value)}
+              value={floorFilter}
+              onChange={(e) => setFloorFilter(e.target.value)}
               style={{
-                width: "100%",
-                padding: "8px 10px",
+                padding: "7px 12px",
                 borderRadius: "8px",
                 border: "1px solid #cbd5e1",
-                fontSize: "12.5px",
                 backgroundColor: "#ffffff",
+                fontSize: "12.5px",
                 color: "#0f172a",
-                outline: "none"
+                outline: "none",
+                cursor: "pointer"
               }}
             >
-              <option value="SEMUA">SEMUA</option>
+              <option value="SEMUA">Semua Lantai</option>
               <option value="Lantai 1">Lantai 1</option>
               <option value="Lantai 2">Lantai 2</option>
               <option value="Lantai 3">Lantai 3</option>
             </select>
           </div>
-
-          {/* Kamar */}
-          <div>
-            <label style={{ display: "block", fontSize: "11px", fontWeight: "700", color: "#64748b", marginBottom: "6px", textTransform: "uppercase" }}>
-              KAMAR
-            </label>
-            <select
-              value={room}
-              onChange={(e) => setRoom(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "8px 10px",
-                borderRadius: "8px",
-                border: "1px solid #cbd5e1",
-                fontSize: "12.5px",
-                backgroundColor: "#ffffff",
-                color: "#0f172a",
-                outline: "none"
-              }}
-            >
-              <option value="SEMUA">SEMUA</option>
-              <option value="A-101">A-101</option>
-              <option value="A-102">A-102</option>
-              <option value="B-201">B-201</option>
-              <option value="B-202">B-202</option>
-              <option value="C-101">C-101</option>
-            </select>
-          </div>
-
-          {/* Sesi */}
-          <div>
-            <label style={{ display: "block", fontSize: "11px", fontWeight: "700", color: "#64748b", marginBottom: "6px", textTransform: "uppercase" }}>
-              SESI
-            </label>
-            <select
-              value={session}
-              onChange={(e) => setSession(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "8px 10px",
-                borderRadius: "8px",
-                border: "1px solid #cbd5e1",
-                fontSize: "12.5px",
-                backgroundColor: "#ffffff",
-                color: "#0f172a",
-                outline: "none"
-              }}
-            >
-              <option value="SEMUA">SEMUA</option>
-              <option value="Subuh">Subuh</option>
-              <option value="Maghrib & Isya">Maghrib & Isya</option>
-            </select>
-          </div>
         </div>
 
-        {/* Action Buttons */}
-        <div style={{ display: "flex", gap: "10px" }}>
-          <button
-            type="button"
-            onClick={handleResetFilter}
-            style={{
-              backgroundColor: "#ffffff",
-              color: "#475569",
-              border: "1px solid #cbd5e1",
-              borderRadius: "8px",
-              padding: "8px 16px",
-              fontSize: "12.5px",
-              fontWeight: "600",
-              cursor: "pointer",
-              transition: "all 0.15s ease"
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f8fafc")}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#ffffff")}
-          >
-            Reset Filter
-          </button>
-          <button
-            type="button"
-            onClick={handleApplyFilter}
-            style={{
-              backgroundColor: "#1e3fae",
-              color: "#ffffff",
-              border: "none",
-              borderRadius: "8px",
-              padding: "8px 20px",
-              fontSize: "12.5px",
-              fontWeight: "600",
-              cursor: "pointer",
-              boxShadow: "0 2px 6px rgba(30, 63, 174, 0.25)",
-              transition: "all 0.15s ease"
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#173294")}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#1e3fae")}
-          >
-            Tampilkan Data
-          </button>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <span style={{ fontSize: "12px", color: "#64748b" }}>
+            Menampilkan <strong>{filteredList.length}</strong> data
+          </span>
+          {(searchQuery || buildingFilter !== "SEMUA" || floorFilter !== "SEMUA") && (
+            <button
+              type="button"
+              onClick={handleResetFilter}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "5px",
+                backgroundColor: "#f1f5f9",
+                color: "#475569",
+                border: "1px solid #e2e8f0",
+                borderRadius: "8px",
+                padding: "6px 12px",
+                fontSize: "12px",
+                fontWeight: "600",
+                cursor: "pointer"
+              }}
+            >
+              <RotateCcw size={12} /> Reset
+            </button>
+          )}
         </div>
       </div>
 
-      {/* 3. Main Data Table Card */}
+      {/* 5. Main Data Table */}
       <div
         style={{
           backgroundColor: "#ffffff",
-          borderRadius: "18px",
+          borderRadius: "16px",
           border: "1px solid #e2e8f0",
-          boxShadow: "0 2px 6px rgba(0, 0, 0, 0.03)",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
           overflow: "hidden"
         }}
       >
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "13px" }}>
             <thead>
-              <tr style={{ borderBottom: "1px solid #e2e8f0", color: "#64748b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                <th style={{ padding: "16px 20px" }}>
-                  <div style={{ display: "inline-flex", alignItems: "center", gap: "4px", cursor: "pointer" }}>
-                    NAMA <ArrowUpDown size={12} />
-                  </div>
-                </th>
-                <th style={{ padding: "16px 16px" }}>NIM</th>
-                <th style={{ padding: "16px 20px" }}>LOKASI</th>
-                <th style={{ padding: "16px 16px", textAlign: "center" }}>
-                  <div style={{ display: "inline-flex", alignItems: "center", gap: "4px", cursor: "pointer" }}>
-                    HADIR <ArrowUpDown size={12} />
-                  </div>
-                </th>
-                <th style={{ padding: "16px 16px", textAlign: "center" }}>
-                  <div style={{ display: "inline-flex", alignItems: "center", gap: "4px", cursor: "pointer" }}>
-                    TERLAMBAT <ArrowUpDown size={12} />
-                  </div>
-                </th>
-                <th style={{ padding: "16px 16px", textAlign: "center" }}>IZIN</th>
-                <th style={{ padding: "16px 16px", textAlign: "center" }}>
-                  <div style={{ display: "inline-flex", alignItems: "center", gap: "4px", cursor: "pointer" }}>
-                    ALPHA <ArrowUpDown size={12} />
-                  </div>
-                </th>
-                <th style={{ padding: "16px 20px" }}>
-                  <div style={{ display: "inline-flex", alignItems: "center", gap: "4px", cursor: "pointer" }}>
-                    % KEHADIRAN <ArrowUpDown size={12} />
-                  </div>
-                </th>
+              <tr style={{ backgroundColor: "#f8fafc", borderBottom: "1px solid #e2e8f0", color: "#64748b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                <th style={{ padding: "14px 18px", width: "40px" }}>No</th>
+                <th style={{ padding: "14px 18px" }}>Nama Lengkap & NIM</th>
+                <th style={{ padding: "14px 16px" }}>Peran (Role)</th>
+                <th style={{ padding: "14px 18px" }}>Gedung & Kamar / Lantai</th>
+                <th style={{ padding: "14px 14px", textAlign: "center" }}>Hadir</th>
+                <th style={{ padding: "14px 14px", textAlign: "center" }}>Izin</th>
+                <th style={{ padding: "14px 14px", textAlign: "center" }}>Sakit</th>
+                <th style={{ padding: "14px 14px", textAlign: "center" }}>Alpha</th>
+                <th style={{ padding: "14px 18px" }}>% Kehadiran</th>
               </tr>
             </thead>
             <tbody>
-              {filteredList.length === 0 ? (
+              {loading ? (
                 <tr>
-                  <td colSpan={8} style={{ textAlign: "center", padding: "48px 16px", color: "#94a3b8" }}>
+                  <td colSpan={9} style={{ textAlign: "center", padding: "40px", color: "#64748b" }}>
+                    Memuat data rekapitulasi presensi...
+                  </td>
+                </tr>
+              ) : filteredList.length === 0 ? (
+                <tr>
+                  <td colSpan={9} style={{ textAlign: "center", padding: "48px 16px", color: "#94a3b8" }}>
                     <div style={{ fontSize: "14px", fontWeight: "700", color: "#475569" }}>
-                      Belum Ada Rekapitulasi Presensi di Database
+                      Tidak Ada Data yang Sesuai
                     </div>
                     <div style={{ fontSize: "12px", marginTop: "4px", color: "#94a3b8" }}>
-                      Data presensi santri yang masuk ke MySQL akan otomatis direkap di sini.
+                      Silakan sesuaikan filter role, gedung, atau kata kunci pencarian Anda.
                     </div>
                   </td>
                 </tr>
               ) : (
                 <>
-                  {filteredList.map((row, index) => (
-                    <tr
-                      key={row.id}
-                      style={{
-                        borderBottom: "1px solid #f8fafc",
-                        transition: "background-color 0.1s ease"
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#fafafa")}
-                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-                    >
-                      <td style={{ padding: "13px 20px", fontWeight: "700", color: "#0f172a" }}>
-                        {row.name}
-                      </td>
-                      <td style={{ padding: "13px 16px", color: "#64748b", fontSize: "12.5px" }}>
-                        {row.nim}
-                      </td>
-                      <td style={{ padding: "13px 20px", color: "#475569", fontSize: "12.5px" }}>
-                        {row.location}
-                      </td>
-                      <td style={{ padding: "13px 16px", textAlign: "center", fontWeight: "600", color: "#0f172a" }}>
-                        {row.hadir}
-                      </td>
-                      <td style={{ padding: "13px 16px", textAlign: "center", color: "#64748b" }}>
-                        {row.terlambat}
-                      </td>
-                      <td style={{ padding: "13px 16px", textAlign: "center", color: "#64748b" }}>
-                        {row.izin}
-                      </td>
-                      <td style={{ padding: "13px 16px", textAlign: "center", color: "#64748b" }}>
-                        {row.alpha}
-                      </td>
-                      <td style={{ padding: "13px 20px" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                          {/* Orange / Amber progress bar matching design */}
-                          <div
+                  {filteredList.map((row, index) => {
+                    const badge = getRoleBadge(row.role);
+                    return (
+                      <tr
+                        key={row.idUser}
+                        style={{
+                          borderBottom: "1px solid #f1f5f9",
+                          transition: "background-color 0.1s ease"
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#fafafa")}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                      >
+                        <td style={{ padding: "12px 18px", color: "#64748b", fontWeight: "600" }}>
+                          {index + 1}
+                        </td>
+
+                        <td style={{ padding: "12px 18px" }}>
+                          <div style={{ fontWeight: "700", color: "#0f172a" }}>{row.nama}</div>
+                          <div style={{ fontSize: "11.5px", color: "#64748b" }}>{row.nim}</div>
+                        </td>
+
+                        <td style={{ padding: "12px 16px" }}>
+                          <span
                             style={{
-                              width: "90px",
-                              height: "6px",
-                              backgroundColor: "#fef3c7",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                              padding: "3px 9px",
                               borderRadius: "999px",
-                              overflow: "hidden"
+                              fontSize: "11px",
+                              fontWeight: "700",
+                              backgroundColor: badge.bg,
+                              color: badge.color,
+                              border: `1px solid ${badge.border}`
                             }}
                           >
+                            {badge.label}
+                          </span>
+                        </td>
+
+                        <td style={{ padding: "12px 18px" }}>
+                          <div style={{ fontWeight: "600", color: "#0f172a" }}>{row.namaGedung}</div>
+                          <div style={{ fontSize: "11.5px", color: "#64748b" }}>
+                            {row.nomorKamar !== "-" ? `Kamar ${row.nomorKamar} · Lantai ${row.lantai}` : "-"}
+                          </div>
+                        </td>
+
+                        <td style={{ padding: "12px 14px", textAlign: "center", fontWeight: "700", color: "#15803d" }}>
+                          {row.hadir}
+                        </td>
+
+                        <td style={{ padding: "12px 14px", textAlign: "center", color: "#2563eb", fontWeight: "600" }}>
+                          {row.izin}
+                        </td>
+
+                        <td style={{ padding: "12px 14px", textAlign: "center", color: "#0284c7", fontWeight: "600" }}>
+                          {row.sakit}
+                        </td>
+
+                        <td style={{ padding: "12px 14px", textAlign: "center", color: row.alpha > 0 ? "#dc2626" : "#64748b", fontWeight: row.alpha > 0 ? "700" : "500" }}>
+                          {row.alpha}
+                        </td>
+
+                        <td style={{ padding: "12px 18px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                             <div
                               style={{
-                                width: `${row.percentage}%`,
-                                height: "100%",
-                                backgroundColor: "#f59e0b",
-                                borderRadius: "999px"
+                                width: "70px",
+                                height: "6px",
+                                backgroundColor: "#f1f5f9",
+                                borderRadius: "999px",
+                                overflow: "hidden"
                               }}
-                            />
+                            >
+                              <div
+                                style={{
+                                  width: `${Math.min(100, row.percentage)}%`,
+                                  height: "100%",
+                                  backgroundColor: row.percentage >= 80 ? "#16a34a" : row.percentage >= 60 ? "#f59e0b" : "#dc2626",
+                                  borderRadius: "999px"
+                                }}
+                              />
+                            </div>
+                            <span style={{ fontSize: "12px", fontWeight: "700", color: "#0f172a" }}>
+                              {row.percentage}%
+                            </span>
                           </div>
-                          <span style={{ fontSize: "12px", fontWeight: "700", color: "#0f172a", minWidth: "35px" }}>
-                            {row.percentage}%
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                      </tr>
+                    );
+                  })}
 
-                  {/* Summary / Total / Rata-rata Row */}
-                  <tr style={{ backgroundColor: "#f8fafc", fontWeight: "700", borderTop: "2px solid #e2e8f0" }}>
-                    <td style={{ padding: "14px 20px", color: "#0f172a" }}>
-                      Total / Rata-rata
+                  {/* Summary Footer Row */}
+                  <tr style={{ backgroundColor: "#f8fafc", fontWeight: "800", borderTop: "2px solid #e2e8f0" }}>
+                    <td colSpan={4} style={{ padding: "14px 18px", color: "#0f172a" }}>
+                      Total Ringkasan ({activeRoleTab.toUpperCase()})
                     </td>
-                    <td style={{ padding: "14px 16px" }}></td>
-                    <td style={{ padding: "14px 20px" }}></td>
-                    <td style={{ padding: "14px 16px", textAlign: "center", color: "#0f172a", fontWeight: "800" }}>
-                      {totalHadir}
+                    <td style={{ padding: "14px 14px", textAlign: "center", color: "#15803d" }}>
+                      {summaryStats.totalHadir}
                     </td>
-                    <td style={{ padding: "14px 16px", textAlign: "center", color: "#0f172a", fontWeight: "800" }}>
-                      {totalTerlambat}
+                    <td style={{ padding: "14px 14px", textAlign: "center", color: "#2563eb" }}>
+                      {summaryStats.totalIzin}
                     </td>
-                    <td style={{ padding: "14px 16px", textAlign: "center", color: "#0f172a", fontWeight: "800" }}>
-                      {totalIzin}
+                    <td style={{ padding: "14px 14px", textAlign: "center", color: "#0284c7" }}>
+                      {summaryStats.totalSakit}
                     </td>
-                    <td style={{ padding: "14px 16px", textAlign: "center", color: "#0f172a", fontWeight: "800" }}>
-                      {totalAlpha}
+                    <td style={{ padding: "14px 14px", textAlign: "center", color: "#dc2626" }}>
+                      {summaryStats.totalAlpha}
                     </td>
-                    <td style={{ padding: "14px 20px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                        <div
-                          style={{
-                            width: "90px",
-                            height: "6px",
-                            backgroundColor: "#fef3c7",
-                            borderRadius: "999px",
-                            overflow: "hidden"
-                          }}
-                        >
-                          <div
-                            style={{
-                              width: `${avgPercentage}%`,
-                              height: "100%",
-                              backgroundColor: "#f59e0b",
-                              borderRadius: "999px"
-                            }}
-                          />
-                        </div>
-                        <span style={{ fontSize: "12.5px", fontWeight: "800", color: "#0f172a" }}>
-                          {avgPercentage}%
-                        </span>
-                      </div>
+                    <td style={{ padding: "14px 18px", color: "#0f172a" }}>
+                      Rata-rata: {summaryStats.avgPct}%
                     </td>
                   </tr>
                 </>
               )}
             </tbody>
           </table>
-        </div>
-
-        {/* Bottom Pagination Row */}
-        <div
-          style={{
-            padding: "16px 24px",
-            borderTop: "1px solid #f1f5f9",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            fontSize: "12.5px",
-            color: "#64748b"
-          }}
-        >
-          <div>
-            {filteredList.length} data • Halaman 1 dari 1
-          </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-            <button
-              disabled
-              style={{
-                padding: "6px 10px",
-                borderRadius: "6px",
-                border: "1px solid #e2e8f0",
-                backgroundColor: "#f8fafc",
-                color: "#94a3b8",
-                cursor: "not-allowed"
-              }}
-            >
-              &lt;
-            </button>
-            <button
-              style={{
-                padding: "6px 12px",
-                borderRadius: "6px",
-                border: "none",
-                backgroundColor: "#1e3fae",
-                color: "#ffffff",
-                fontWeight: "700"
-              }}
-            >
-              1
-            </button>
-            <button
-              disabled
-              style={{
-                padding: "6px 10px",
-                borderRadius: "6px",
-                border: "1px solid #e2e8f0",
-                backgroundColor: "#f8fafc",
-                color: "#94a3b8",
-                cursor: "not-allowed"
-              }}
-            >
-              &gt;
-            </button>
-          </div>
         </div>
       </div>
     </div>
