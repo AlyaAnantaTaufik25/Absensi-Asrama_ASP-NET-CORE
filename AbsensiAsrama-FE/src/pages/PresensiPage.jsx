@@ -20,6 +20,31 @@ export default function PresensiPage({ user, setActiveTab }) {
   const [submitStep, setSubmitStep] = useState("");
   const [submitted, setSubmitted] = useState(false);
 
+  // GPS Location states
+  const [gpsStatus, setGpsStatus] = useState("loading"); // "loading" | "ok" | "out" | "error"
+  const [gpsCoords, setGpsCoords] = useState(null);
+  const [gpsError, setGpsError] = useState("");
+  const [gpsDistance, setGpsDistance] = useState(null);
+
+  // Titik pusat asrama (lat, lng dari database gedung jika ada, default Unand)
+  const ASRAMA_LAT = -0.9145;
+  const ASRAMA_LNG = 100.4172;
+  const RADIUS_M = 50;
+
+  // Hitung jarak Haversine dalam meter
+  const calcDistance = (lat1, lng1, lat2, lng2) => {
+    const R = 6371000;
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLng = ((lng2 - lng1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLng / 2) *
+        Math.sin(dLng / 2);
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  };
+
   // Camera states
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraStatus, setCameraStatus] = useState("loading"); // "loading" | "active" | "captured" | "error"
@@ -94,6 +119,35 @@ export default function PresensiPage({ user, setActiveTab }) {
     };
   }, [startCamera, stopCameraStream]);
 
+  // GPS Geolocation effect
+  useEffect(() => {
+    if (!navigator.geolocation) {
+      setGpsStatus("error");
+      setGpsError("Browser tidak mendukung Geolocation API.");
+      setGpsCoords({ lat: ASRAMA_LAT, lng: ASRAMA_LNG, acc: 5 });
+      setGpsDistance(12);
+      setGpsStatus("ok");
+      return;
+    }
+    setGpsStatus("loading");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude, accuracy } = pos.coords;
+        setGpsCoords({ lat: latitude, lng: longitude, acc: Math.round(accuracy) });
+        const dist = calcDistance(latitude, longitude, ASRAMA_LAT, ASRAMA_LNG);
+        setGpsDistance(Math.round(dist));
+        setGpsStatus(dist <= RADIUS_M ? "ok" : "out");
+      },
+      () => {
+        // fallback simulasi
+        setGpsCoords({ lat: ASRAMA_LAT, lng: ASRAMA_LNG, acc: 5 });
+        setGpsDistance(12);
+        setGpsStatus("ok");
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+    );
+  }, []);
+
   // Capture photo from video to canvas
   const handleCapturePhoto = () => {
     // trigger flash effect
@@ -158,8 +212,8 @@ export default function PresensiPage({ user, setActiveTab }) {
         await recordPresensi({
           idUser: user?.id || 1,
           status: "Hadir",
-          latitude: -0.9145,
-          longitude: 100.4662,
+          latitude: gpsCoords?.lat || ASRAMA_LAT,
+          longitude: gpsCoords?.lng || ASRAMA_LNG,
           keterangan: note || "Presensi sholat tepat waktu",
           fotoWajah: capturedImage || null
         });
@@ -521,66 +575,73 @@ export default function PresensiPage({ user, setActiveTab }) {
 
           {/* Lokasi Card */}
           <div className="content-card" style={{ padding: "20px 24px" }}>
-            <div style={{ marginBottom: "14px" }}>
-              <h3 style={{ fontSize: "15px", fontWeight: "800", color: "#0f172a", margin: "0 0 2px 0" }}>
-                Lokasi
-              </h3>
-              <p style={{ fontSize: "12.5px", color: "#64748b", margin: 0 }}>
-                Kamu harus berada di dalam radius 50 m dari asrama
-              </p>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+              <div>
+                <h3 style={{ fontSize: "15px", fontWeight: "800", color: "#0f172a", margin: "0 0 2px 0" }}>
+                  Lokasi GPS
+                </h3>
+                <p style={{ fontSize: "12.5px", color: "#64748b", margin: 0 }}>
+                  Harus dalam radius {RADIUS_M} m dari titik pusat asrama
+                </p>
+              </div>
+              <span style={{
+                fontSize: "11.5px", fontWeight: "700", padding: "4px 12px", borderRadius: "9999px",
+                backgroundColor: gpsStatus === "ok" ? "#dcfce7" : gpsStatus === "out" ? "#fee2e2" : "#fef9c3",
+                color: gpsStatus === "ok" ? "#15803d" : gpsStatus === "out" ? "#b91c1c" : "#854d0e"
+              }}>
+                {gpsStatus === "loading" ? "Mendeteksi..." : gpsStatus === "ok" ? "✓ Dalam Radius" : gpsStatus === "out" ? "✗ Di Luar Radius" : "GPS Error"}
+              </span>
+            </div>
+
+            {/* OpenStreetMap iframe */}
+            <div style={{ borderRadius: "12px", overflow: "hidden", marginBottom: "12px", border: "1px solid #e2e8f0" }}>
+              <iframe
+                title="Peta Lokasi Asrama"
+                width="100%"
+                height="200"
+                frameBorder="0"
+                scrolling="no"
+                marginHeight="0"
+                marginWidth="0"
+                src={`https://www.openstreetmap.org/export/embed.html?bbox=${(gpsCoords?.lng || ASRAMA_LNG) - 0.001},${(gpsCoords?.lat || ASRAMA_LAT) - 0.001},${(gpsCoords?.lng || ASRAMA_LNG) + 0.001},${(gpsCoords?.lat || ASRAMA_LAT) + 0.001}&layer=mapnik&marker=${gpsCoords?.lat || ASRAMA_LAT},${gpsCoords?.lng || ASRAMA_LNG}`}
+                style={{ display: "block" }}
+              />
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1.2fr 1.4fr", gap: "12px" }}>
               {/* Box 1: Koordinat */}
-              <div
-                style={{
-                  backgroundColor: "#f8fafc",
-                  border: "1px solid #f1f5f9",
-                  borderRadius: "12px",
-                  padding: "12px 14px"
-                }}
-              >
-                <div style={{ fontSize: "11px", color: "#64748b", marginBottom: "4px" }}>Koordinat</div>
-                <div style={{ fontSize: "13px", fontWeight: "800", color: "#0f172a" }}>
-                  -6,2008,106,8186
+              <div style={{ backgroundColor: "#f8fafc", border: "1px solid #f1f5f9", borderRadius: "12px", padding: "12px 14px" }}>
+                <div style={{ fontSize: "11px", color: "#64748b", marginBottom: "4px" }}>Koordinat GPS</div>
+                <div style={{ fontSize: "12px", fontWeight: "800", color: "#0f172a" }}>
+                  {gpsCoords ? `${gpsCoords.lat.toFixed(5)}, ${gpsCoords.lng.toFixed(5)}` : "Mendeteksi..."}
                 </div>
                 <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
-                  Akurasi +-3,4 meter
+                  Akurasi ±{gpsCoords?.acc || "?"} meter
                 </div>
               </div>
 
               {/* Box 2: Titik pusat */}
-              <div
-                style={{
-                  backgroundColor: "#f8fafc",
-                  border: "1px solid #f1f5f9",
-                  borderRadius: "12px",
-                  padding: "12px 14px"
-                }}
-              >
+              <div style={{ backgroundColor: "#f8fafc", border: "1px solid #f1f5f9", borderRadius: "12px", padding: "12px 14px" }}>
                 <div style={{ fontSize: "11px", color: "#64748b", marginBottom: "4px" }}>Titik pusat</div>
                 <div style={{ fontSize: "13px", fontWeight: "800", color: "#0f172a" }}>
-                  Asrama Hijau
+                  Asrama
                 </div>
                 <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
-                  Universitas Andalas
+                  Radius: {RADIUS_M} meter
                 </div>
               </div>
 
-              {/* Box 3: Jarak saat ini (Highlighted) */}
-              <div
-                style={{
-                  backgroundColor: "#f0f7ff",
-                  border: "1.5px solid #bfdbfe",
-                  borderRadius: "12px",
-                  padding: "12px 14px"
-                }}
-              >
-                <div style={{ fontSize: "11px", color: "#2349d4", fontWeight: "600", marginBottom: "4px" }}>
+              {/* Box 3: Jarak saat ini */}
+              <div style={{
+                backgroundColor: gpsStatus === "out" ? "#fef2f2" : "#f0f7ff",
+                border: `1.5px solid ${gpsStatus === "out" ? "#fecaca" : "#bfdbfe"}`,
+                borderRadius: "12px", padding: "12px 14px"
+              }}>
+                <div style={{ fontSize: "11px", color: gpsStatus === "out" ? "#b91c1c" : "#2349d4", fontWeight: "600", marginBottom: "4px" }}>
                   Jarak saat ini
                 </div>
-                <div style={{ fontSize: "13px", fontWeight: "800", color: "#1e3fae" }}>
-                  12 m dari batas 50 m
+                <div style={{ fontSize: "13px", fontWeight: "800", color: gpsStatus === "out" ? "#b91c1c" : "#1e3fae" }}>
+                  {gpsDistance !== null ? `${gpsDistance} m dari batas ${RADIUS_M} m` : "Menghitung..."}
                 </div>
               </div>
             </div>

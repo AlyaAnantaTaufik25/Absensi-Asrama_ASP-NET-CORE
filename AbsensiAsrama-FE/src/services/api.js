@@ -1,6 +1,7 @@
 // API Service untuk menghubungkan Frontend (React) ke Backend (ASP.NET Core Minimal API)
+// Di mode dev (port Vite apapun kecuali port backend 5250), arahkan ke backend 5250
 export const API_BASE_URL =
-  typeof window !== "undefined" && window.location.port === "5173"
+  typeof window !== "undefined" && window.location.port !== "5250"
     ? "http://localhost:5250"
     : "";
 
@@ -12,7 +13,7 @@ export async function checkBackendStatus() {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 2000);
 
-    const res = await fetch(`${API_BASE_URL}/api/db-check`, {
+    const res = await fetch(`${API_BASE_URL}/api/pingdb`, {
       method: "GET",
       signal: controller.signal
     });
@@ -86,6 +87,102 @@ export async function getUsers() {
   } catch (err) {
     console.warn("Backend belum aktif atau error:", err);
     return null;
+  }
+}
+
+/**
+ * Ambil data penghuni saja (role=penghuni/mahasiswa)
+ */
+export async function getPenghuni() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/users/penghuni`);
+    if (!res.ok) throw new Error("Gagal mengambil data penghuni");
+    return await res.json();
+  } catch (err) {
+    console.warn("Backend penghuni error:", err);
+    return [];
+  }
+}
+
+/**
+ * Ambil data fasil saja (role=fasil)
+ */
+export async function getFasil() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/users/fasil`);
+    if (!res.ok) throw new Error("Gagal mengambil data fasil");
+    return await res.json();
+  } catch (err) {
+    console.warn("Backend fasil error:", err);
+    return [];
+  }
+}
+
+/**
+ * Tambah user baru (penghuni/fasil/admin)
+ */
+export async function createUser(userData) {
+  const res = await fetch(`${API_BASE_URL}/api/users`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(userData)
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || "Gagal membuat user");
+  return data;
+}
+
+/**
+ * Hapus user berdasarkan ID
+ */
+export async function deleteUser(id) {
+  const res = await fetch(`${API_BASE_URL}/api/users/${id}`, { method: "DELETE" });
+  if (!res.ok) {
+    const data = await res.json();
+    throw new Error(data.message || "Gagal menghapus user");
+  }
+  return await res.json();
+}
+
+/**
+ * Update user berdasarkan ID
+ */
+export async function updateUser(id, userData) {
+  const res = await fetch(`${API_BASE_URL}/api/users/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(userData)
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || "Gagal update user");
+  return data;
+}
+
+/**
+ * Ambil data gedung
+ */
+export async function getGedung() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/gedung`);
+    if (!res.ok) throw new Error("Gagal mengambil data gedung");
+    return await res.json();
+  } catch (err) {
+    console.warn("Backend gedung error:", err);
+    return [];
+  }
+}
+
+/**
+ * Ambil data kamar
+ */
+export async function getKamar() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/kamar`);
+    if (!res.ok) throw new Error("Gagal mengambil data kamar");
+    return await res.json();
+  } catch (err) {
+    console.warn("Backend kamar error:", err);
+    return [];
   }
 }
 

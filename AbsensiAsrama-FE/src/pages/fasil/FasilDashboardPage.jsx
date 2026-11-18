@@ -1,7 +1,43 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { ChevronRight } from "lucide-react";
 
-export default function FasilDashboardPage({ setActiveTab }) {
+const API_BASE = "http://localhost:5250";
+
+export default function FasilDashboardPage({ setActiveTab, user }) {
+  const [stats, setStats] = useState({ hadir: "-", total: "-", izin: "-", belumPresensi: "-", kepatuhan: "-" });
+
+  useEffect(() => {
+    const today = new Date().toISOString().split("T")[0];
+    // Fetch presensi
+    fetch(`${API_BASE}/api/presensi`).then(r => r.ok ? r.json() : []).then(data => {
+      if (!Array.isArray(data)) return;
+      const todayData = data.filter(p => {
+        const tgl = p.tanggal || p.Tanggal || "";
+        return String(tgl).startsWith(today);
+      });
+      const hadirCount = todayData.filter(p => (p.status || p.Status || "").toLowerCase() === "hadir").length;
+      setStats(prev => ({ ...prev, hadir: hadirCount, total: todayData.length }));
+    }).catch(() => {});
+
+    // Fetch perizinan hari ini
+    fetch(`${API_BASE}/api/perizinan`).then(r => r.ok ? r.json() : []).then(data => {
+      if (!Array.isArray(data)) return;
+      const todayIzin = data.filter(p => {
+        const tgl = p.tanggal || p.Tanggal || "";
+        return String(tgl).startsWith(today);
+      });
+      setStats(prev => ({ ...prev, izin: todayIzin.length }));
+    }).catch(() => {});
+
+    // Fetch penghuni count
+    fetch(`${API_BASE}/api/users/penghuni`).then(r => r.ok ? r.json() : []).then(data => {
+      if (!Array.isArray(data)) return;
+      setStats(prev => ({ ...prev, belumPresensi: data.length > 0 ? "-" : 0 }));
+    }).catch(() => {});
+  }, []);
+
+  const displayName = user?.name || user?.nama || "Fasil";
+
   const scheduleItems = [
     {
       time: "04:00",
@@ -85,7 +121,7 @@ export default function FasilDashboardPage({ setActiveTab }) {
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "4px" }}>
             <h1 style={{ fontSize: "24px", fontWeight: "800", color: "#0f172a", margin: 0, letterSpacing: "-0.5px" }}>
-              Selamat malam, Kak Alif
+            Selamat {new Date().getHours() < 12 ? "pagi" : new Date().getHours() < 15 ? "siang" : new Date().getHours() < 18 ? "sore" : "malam"}, Kak {displayName}
             </h1>
             <span
               style={{
@@ -148,18 +184,18 @@ export default function FasilDashboardPage({ setActiveTab }) {
             Hadir Maghrib & Isya
           </div>
           <div style={{ display: "flex", alignItems: "baseline", gap: "4px" }}>
-            <span style={{ fontSize: "28px", fontWeight: "800", color: "#15803d" }}>10</span>
-            <span style={{ fontSize: "14px", color: "#94a3b8", fontWeight: "600" }}>/12</span>
+            <span style={{ fontSize: "28px", fontWeight: "800", color: "#15803d" }}>{stats.hadir}</span>
+            <span style={{ fontSize: "14px", color: "#94a3b8", fontWeight: "600" }}>/{stats.total}</span>
           </div>
         </div>
 
         {/* Stat 2 */}
         <div style={{ borderRight: "1px solid #f1f5f9", paddingRight: "16px", paddingLeft: "8px" }}>
           <div style={{ fontSize: "12.5px", color: "#64748b", marginBottom: "6px", fontWeight: "500" }}>
-            Izin
+            Izin Hari Ini
           </div>
           <div style={{ fontSize: "28px", fontWeight: "800", color: "#2563eb" }}>
-            1
+            {stats.izin}
           </div>
         </div>
 
@@ -169,7 +205,7 @@ export default function FasilDashboardPage({ setActiveTab }) {
             Belum presensi
           </div>
           <div style={{ fontSize: "28px", fontWeight: "800", color: "#ea580c" }}>
-            1
+            {stats.belumPresensi}
           </div>
         </div>
 
@@ -179,7 +215,11 @@ export default function FasilDashboardPage({ setActiveTab }) {
             Tingkat Kepatuhan
           </div>
           <div style={{ display: "flex", alignItems: "baseline", gap: "4px" }}>
-            <span style={{ fontSize: "28px", fontWeight: "800", color: "#15803d" }}>91.7%</span>
+            <span style={{ fontSize: "28px", fontWeight: "800", color: "#15803d" }}>
+              {stats.hadir !== "-" && stats.total !== "-" && stats.total > 0
+                ? Math.round((stats.hadir / stats.total) * 100) + "%"
+                : "-"}
+            </span>
           </div>
         </div>
       </div>

@@ -6,9 +6,7 @@ import MasterDataPage from "./MasterDataPage";
 import DataPenghuniPage from "./DataPenghuniPage";
 import DataFasilPage from "./DataFasilPage";
 import AkunPenggunaPage from "./AkunPenggunaPage";
-import HakAksesPage from "./HakAksesPage";
 import RekapitulasiPresensiAdminPage from "./RekapitulasiPresensiAdminPage";
-import { ShieldCheck, BarChart3, TrendingUp } from "lucide-react";
 
 export default function AdminContainer({ user, onLogout }) {
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -33,7 +31,7 @@ export default function AdminContainer({ user, onLogout }) {
             <AdminDashboardPage setActiveTab={setActiveTab} />
           )}
 
-          {activeTab === "master-data" && (
+          {activeTab === "data-gedung" && (
             <MasterDataPage />
           )}
 
@@ -49,36 +47,8 @@ export default function AdminContainer({ user, onLogout }) {
             <AkunPenggunaPage />
           )}
 
-          {activeTab === "hak-akses" && (
-            <HakAksesPage />
-          )}
-
           {activeTab === "rekapitulasi" && (
             <RekapitulasiPresensiAdminPage />
-          )}
-
-          {activeTab === "analytics" && (
-            <div className="content-card" style={{ padding: "32px", textAlign: "center" }}>
-              <TrendingUp size={48} color="#2349d4" style={{ margin: "0 auto 16px" }} />
-              <h2 style={{ fontSize: "20px", fontWeight: "800", color: "#0f172a" }}>Analytics & Export Laporan</h2>
-              <p style={{ color: "#64748b", maxWidth: "480px", margin: "8px auto 24px" }}>
-                Analisis statistik komprehensif tingkat kepatuhan santri dan fasilitas ekspor data laporan rektorat.
-              </p>
-              <button
-                onClick={() => alert("Mengekspor laporan analytics...")}
-                style={{
-                  backgroundColor: "#2349d4",
-                  color: "#ffffff",
-                  border: "none",
-                  padding: "10px 20px",
-                  borderRadius: "10px",
-                  fontWeight: "700",
-                  cursor: "pointer"
-                }}
-              >
-                Ekspor Laporan Lengkap (.pdf)
-              </button>
-            </div>
           )}
         </main>
       </div>

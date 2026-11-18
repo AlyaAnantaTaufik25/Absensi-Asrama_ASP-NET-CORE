@@ -184,6 +184,56 @@ app.MapPost("/api/users", async (CreateUserRequest request, ApplicationDbContext
     });
 });
 
+// DELETE /api/users/{id}
+app.MapDelete("/api/users/{id:int}", async (int id, ApplicationDbContext db) =>
+{
+    var user = await db.Users.FindAsync(id);
+    if (user == null) return Results.NotFound(new { message = "User tidak ditemukan." });
+    db.Users.Remove(user);
+    await db.SaveChangesAsync();
+    return Results.Ok(new { message = "User berhasil dihapus." });
+});
+
+// PUT /api/users/{id}
+app.MapPut("/api/users/{id:int}", async (int id, UpdateUserRequest req, ApplicationDbContext db) =>
+{
+    var user = await db.Users.FindAsync(id);
+    if (user == null) return Results.NotFound(new { message = "User tidak ditemukan." });
+    user.Nama = req.Nama ?? user.Nama;
+    user.Asal = req.Asal ?? user.Asal;
+    user.NomorKamar = req.NomorKamar;
+    user.JenisKelamin = req.JenisKelamin ?? user.JenisKelamin;
+    user.Email = req.Email ?? user.Email;
+    user.Role = req.Role ?? user.Role;
+    if (!string.IsNullOrWhiteSpace(req.Password))
+    {
+        var hasher = new Microsoft.AspNetCore.Identity.PasswordHasher<User>();
+        user.Password = hasher.HashPassword(user, req.Password);
+    }
+    await db.SaveChangesAsync();
+    return Results.Ok(new { message = "User berhasil diperbarui.", user.IdUser, user.Nama, user.Email, user.Role });
+});
+
+// GET /api/users/penghuni - hanya role penghuni
+app.MapGet("/api/users/penghuni", async (ApplicationDbContext db) =>
+{
+    var list = await db.Users
+        .Where(u => u.Role == "penghuni" || u.Role == "mahasiswa")
+        .Select(u => new { u.IdUser, u.Nama, u.Nim, u.Asal, u.NomorKamar, u.JenisKelamin, u.Email, u.Role })
+        .ToListAsync();
+    return Results.Ok(list);
+});
+
+// GET /api/users/fasil - hanya role fasil
+app.MapGet("/api/users/fasil", async (ApplicationDbContext db) =>
+{
+    var list = await db.Users
+        .Where(u => u.Role == "fasil")
+        .Select(u => new { u.IdUser, u.Nama, u.Nim, u.Asal, u.NomorKamar, u.JenisKelamin, u.Email, u.Role })
+        .ToListAsync();
+    return Results.Ok(list);
+});
+
 // -------------------------------------------------
 // Presensi
 // -------------------------------------------------
@@ -251,6 +301,16 @@ app.MapDelete("/api/gedung/{id:int}", async (int id, ApplicationDbContext db) =>
     return Results.Ok(new { message = "Gedung berhasil dihapus." });
 });
 
+app.MapPut("/api/gedung/{id:int}", async (int id, UpdateGedungRequest req, ApplicationDbContext db) =>
+{
+    var gedung = await db.Gedungs.FindAsync(id);
+    if (gedung == null) return Results.NotFound(new { message = "Gedung tidak ditemukan." });
+    if (req.NamaGedung != null) gedung.NamaGedung = req.NamaGedung;
+    if (req.IdUser.HasValue) gedung.IdUser = req.IdUser.Value;
+    await db.SaveChangesAsync();
+    return Results.Ok(new { message = "Gedung berhasil diperbarui.", gedung.IdGedung, gedung.NamaGedung, gedung.IdUser });
+});
+
 // -------------------------------------------------
 // Kamar
 // -------------------------------------------------
@@ -288,6 +348,16 @@ app.MapDelete("/api/kamar/{noKamar}", async (string noKamar, ApplicationDbContex
     db.Kamars.Remove(kamar);
     await db.SaveChangesAsync();
     return Results.Ok(new { message = "Kamar berhasil dihapus." });
+});
+
+app.MapPut("/api/kamar/{noKamar}", async (string noKamar, UpdateKamarRequest req, ApplicationDbContext db) =>
+{
+    var kamar = await db.Kamars.FindAsync(noKamar);
+    if (kamar == null) return Results.NotFound(new { message = "Kamar tidak ditemukan." });
+    if (req.Lantai.HasValue) kamar.Lantai = req.Lantai.Value;
+    if (req.IdGedung.HasValue) kamar.IdGedung = req.IdGedung.Value;
+    await db.SaveChangesAsync();
+    return Results.Ok(new { message = "Kamar berhasil diperbarui.", kamar.NoKamar, kamar.Lantai, kamar.IdGedung });
 });
 
 // -------------------------------------------------
@@ -400,3 +470,6 @@ public record CreateGedungRequest(string NamaGedung, int IdUser);
 public record CreateKamarRequest(string NoKamar, int Lantai, int IdGedung);
 public record CreatePresensiRequest(int IdUser, string? Status, double? Latitude, double? Longitude, string? Keterangan, string? FotoWajah);
 public record CreatePerizinanRequest(string Nim, DateTime Tanggal, string Alasan, string? FileBukti);
+public record UpdateUserRequest(string? Nama, string? Asal, string? NomorKamar, string? JenisKelamin, string? Email, string? Password, string? Role);
+public record UpdateGedungRequest(string? NamaGedung, int? IdUser);
+public record UpdateKamarRequest(int? Lantai, int? IdGedung);

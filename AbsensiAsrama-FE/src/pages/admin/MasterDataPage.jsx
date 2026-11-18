@@ -1,49 +1,38 @@
 import React, { useState, useEffect } from "react";
-import {
-  Search,
-  Plus,
-  Edit2,
-  Trash2,
-  MapPin,
-  X,
-  Crosshair,
-  ChevronDown
-} from "lucide-react";
+import { Search, Plus, Edit2, Trash2, X, Building2 } from "lucide-react";
 
-const API = "http://localhost:5000";
+const API_BASE = "http://localhost:5250";
 
 export default function MasterDataPage() {
-  const [activeSubTab, setActiveSubTab] = useState("gedung"); // "gedung" | "lantai" | "kamar"
   const [searchQuery, setSearchQuery] = useState("");
-
-  // Modals state
-  const [showModalGedung, setShowModalGedung] = useState(false);
-  const [showModalLantai, setShowModalLantai] = useState(false);
-  const [showModalKamar, setShowModalKamar] = useState(false);
-
-  // Data dari database
   const [gedungList, setGedungList] = useState([]);
   const [kamarList, setKamarList] = useState([]);
-  const [lantaiList, setLantaiList] = useState([]);
+  const [fasilList, setFasilList] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Fetch gedung dari API
-  const fetchGedung = async () => {
+  const [showModal, setShowModal] = useState(false);
+  const [editingGedung, setEditingGedung] = useState(null);
+  const [formData, setFormData] = useState({ namaGedung: "", idUser: "" });
+  const [formLantaiKamar, setFormLantaiKamar] = useState([]);
+  const [formLoading, setFormLoading] = useState(false);
+  const [formError, setFormError] = useState(null);
+  const [expandedGedung, setExpandedGedung] = useState(null);
+
+  const fetchAll = async () => {
+    setLoading(true);
+    setError(null);
     try {
-      setLoading(true);
-      const res = await fetch(`${API}/api/gedung`);
-      if (!res.ok) throw new Error("Gagal mengambil data gedung");
-      const data = await res.json();
-      setGedungList(data.map(g => ({
-        id: g.idGedung,
-        nama: g.namaGedung,
-        idUser: g.idUser,
-        fasil: g.namaFasil || "-",
-        lat: "-",
-        lng: "-",
-        radius: "-"
-      })));
+      const [gRes, kRes, fRes] = await Promise.all([
+        fetch(`${API_BASE}/api/gedung`),
+        fetch(`${API_BASE}/api/kamar`),
+        fetch(`${API_BASE}/api/users/fasil`)
+      ]);
+      if (!gRes.ok) throw new Error("Gagal mengambil data gedung");
+      if (!kRes.ok) throw new Error("Gagal mengambil data kamar");
+      setGedungList(await gRes.json());
+      setKamarList(await kRes.json());
+      setFasilList(fRes.ok ? await fRes.json() : []);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -51,883 +40,316 @@ export default function MasterDataPage() {
     }
   };
 
-  // Fetch kamar dari API
-  const fetchKamar = async () => {
-    try {
-      setLoading(true);
-      const res = await fetch(`${API}/api/kamar`);
-      if (!res.ok) throw new Error("Gagal mengambil data kamar");
-      const data = await res.json();
-      setKamarList(data.map(k => ({
-        id: k.noKamar,
-        nomor: k.noKamar,
-        gedung: k.namaGedung || "-",
-        lantai: String(k.lantai),
-        idGedung: k.idGedung,
-        kapasitas: "-",
-        terisi: "-"
-      })));
+  useEffect(() => { fetchAll(); }, []);
 
-      // Hitung lantai unik dari kamar
-      const lantaiMap = {};
-      data.forEach(k => {
-        const key = `${k.idGedung}-${k.lantai}`;
-        if (!lantaiMap[key]) {
-          lantaiMap[key] = {
-            id: key,
-            gedung: k.namaGedung || "-",
-            nomor: `Lantai ${k.lantai}`,
-            kamar: 0
-          };
+  const getKamarForGedung = (id) => kamarList.filter(k => k.idGedung === id);
+  const getLantaiForGedung = (id) => [...new Set(getKamarForGedung(id).map(k => k.lantai))].sort((a, b) => a - b);
+
+  const openAddModal = () => {
+    setEditingGedung(null);
+    setFormData({ namaGedung: "", idUser: "" });
+    setFormLantaiKamar([{ lantai: 1, kamars: [""] }]);
+    setFormError(null);
+    setShowModal(true);
+  };
+
+  const openEditModal = (g) => {
+    setEditingGedung(g);
+    setFormData({ namaGedung: g.namaGedung, idUser: String(g.idUser) });
+    const kamars = getKamarForGedung(g.idGedung);
+    const lantaiMap = {};
+    kamars.forEach(k => {
+      if (!lantaiMap[k.lantai]) lantaiMap[k.lantai] = [];
+      lantaiMap[k.lantai].push(k.noKamar);
+    });
+    const entries = Object.entries(lantaiMap).map(([l, ks]) => ({ lantai: parseInt(l), kamars: ks }));
+    setFormLantaiKamar(entries.length > 0 ? entries : [{ lantai: 1, kamars: [""] }]);
+    setFormError(null);
+    setShowModal(true);
+  };
+
+  const addLantai = () => {
+    const max = formLantaiKamar.reduce((m, l) => Math.max(m, l.lantai), 0);
+    setFormLantaiKamar([...formLantaiKamar, { lantai: max + 1, kamars: [""] }]);
+  };
+  const removeLantai = (idx) => setFormLantaiKamar(formLantaiKamar.filter((_, i) => i !== idx));
+  const addKamarToLantai = (li) => {
+    const u = [...formLantaiKamar]; u[li].kamars.push(""); setFormLantaiKamar(u);
+  };
+  const removeKamarFromLantai = (li, ki) => {
+    const u = [...formLantaiKamar]; u[li].kamars = u[li].kamars.filter((_, i) => i !== ki); setFormLantaiKamar(u);
+  };
+  const updateKamarName = (li, ki, v) => {
+    const u = [...formLantaiKamar]; u[li].kamars[ki] = v; setFormLantaiKamar(u);
+  };
+  const updateLantaiNumber = (li, v) => {
+    const u = [...formLantaiKamar]; u[li].lantai = parseInt(v) || 1; setFormLantaiKamar(u);
+  };
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    setFormLoading(true);
+    setFormError(null);
+    try {
+      let gedungId;
+      if (editingGedung) {
+        const res = await fetch(`${API_BASE}/api/gedung/${editingGedung.idGedung}`, {
+          method: "PUT", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ namaGedung: formData.namaGedung, idUser: parseInt(formData.idUser) || null })
+        });
+        if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.message || "Gagal mengupdate gedung"); }
+        gedungId = editingGedung.idGedung;
+      } else {
+        const res = await fetch(`${API_BASE}/api/gedung`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ namaGedung: formData.namaGedung, idUser: parseInt(formData.idUser) || 0 })
+        });
+        if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.message || "Gagal menambah gedung"); }
+        const created = await res.json();
+        gedungId = created.idGedung;
+      }
+
+      for (const lk of formLantaiKamar) {
+        for (const noKamar of lk.kamars) {
+          if (!noKamar.trim()) continue;
+          const existing = kamarList.find(k => k.noKamar === noKamar.trim());
+          if (!existing) {
+            await fetch(`${API_BASE}/api/kamar`, {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ noKamar: noKamar.trim(), lantai: lk.lantai, idGedung: gedungId })
+            });
+          }
         }
-        lantaiMap[key].kamar++;
-      });
-      setLantaiList(Object.values(lantaiMap).map(l => ({
-        ...l,
-        kamar: `${l.kamar} Kamar`
-      })));
-    } catch (e) {
-      setError(e.message);
+      }
+
+      setShowModal(false);
+      await fetchAll();
+    } catch (err) {
+      setFormError(err.message);
     } finally {
-      setLoading(false);
+      setFormLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchGedung();
-    fetchKamar();
-  }, []);
-
-  // Hapus gedung
-  const handleDeleteGedung = async (id) => {
-    if (!window.confirm("Yakin hapus gedung ini?")) return;
-    try {
-      const res = await fetch(`${API}/api/gedung/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Gagal menghapus gedung");
-      await fetchGedung();
-    } catch (e) {
-      alert(e.message);
+  const handleDeleteGedung = async (g) => {
+    const kamars = getKamarForGedung(g.idGedung);
+    if (kamars.length > 0) {
+      if (!window.confirm(`Gedung "${g.namaGedung}" memiliki ${kamars.length} kamar. Hapus semua kamar dan gedung ini?`)) return;
+      for (const k of kamars) { await fetch(`${API_BASE}/api/kamar/${k.noKamar}`, { method: "DELETE" }); }
+    } else {
+      if (!window.confirm(`Hapus gedung "${g.namaGedung}"?`)) return;
     }
+    const res = await fetch(`${API_BASE}/api/gedung/${g.idGedung}`, { method: "DELETE" });
+    if (!res.ok) { alert("Gagal menghapus gedung"); return; }
+    await fetchAll();
   };
 
-  // Hapus kamar
   const handleDeleteKamar = async (noKamar) => {
-    if (!window.confirm("Yakin hapus kamar ini?")) return;
-    try {
-      const res = await fetch(`${API}/api/kamar/${noKamar}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Gagal menghapus kamar");
-      await fetchKamar();
-    } catch (e) {
-      alert(e.message);
-    }
+    if (!window.confirm(`Hapus kamar "${noKamar}"?`)) return;
+    const res = await fetch(`${API_BASE}/api/kamar/${noKamar}`, { method: "DELETE" });
+    if (!res.ok) { alert("Gagal menghapus kamar"); return; }
+    await fetchAll();
   };
 
-  // Form states for modals
-  const [formGedung, setFormGedung] = useState({
-    nama: "",
-    idUser: "",
-    lat: "-0.9411",
-    lng: "100.4172",
-    radius: "50"
-  });
+  const filteredGedung = gedungList.filter(g =>
+    g.namaGedung.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (g.namaFasil || "").toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
-  const [formKamar, setFormKamar] = useState({
-    noKamar: "",
-    lantai: "1",
-    idGedung: ""
-  });
-
-  // Handlers
-  const handleSaveGedung = async (e) => {
-    e.preventDefault();
-    if (!formGedung.idUser) { alert("Pilih fasil pengelola (IdUser) terlebih dahulu."); return; }
-    try {
-      const res = await fetch(`${API}/api/gedung`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ namaGedung: formGedung.nama, idUser: parseInt(formGedung.idUser) })
-      });
-      if (!res.ok) throw new Error("Gagal menyimpan gedung");
-      setShowModalGedung(false);
-      setFormGedung({ nama: "", idUser: "", lat: "-0.9411", lng: "100.4172", radius: "50" });
-      await fetchGedung();
-    } catch (err) {
-      alert(err.message);
-    }
-  };
-
-  const handleSaveKamar = async (e) => {
-    e.preventDefault();
-    if (!formKamar.idGedung) { alert("Pilih gedung terlebih dahulu."); return; }
-    try {
-      const res = await fetch(`${API}/api/kamar`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ noKamar: formKamar.noKamar, lantai: parseInt(formKamar.lantai), idGedung: parseInt(formKamar.idGedung) })
-      });
-      if (!res.ok) { const err = await res.json(); throw new Error(err.message || "Gagal menyimpan kamar"); }
-      setShowModalKamar(false);
-      setFormKamar({ noKamar: "", lantai: "1", idGedung: "" });
-      await fetchKamar();
-    } catch (err) {
-      alert(err.message);
-    }
-  };
+  const inputStyle = { width: "100%", height: "38px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12.5px", boxSizing: "border-box", outline: "none" };
+  const labelStyle = { display: "block", fontSize: "12px", fontWeight: "700", color: "#334155", marginBottom: "4px" };
+  const btnPrimary = { padding: "8px 20px", borderRadius: "8px", border: "none", backgroundColor: "#2349d4", color: "#ffffff", cursor: "pointer", fontSize: "12.5px", fontWeight: "700" };
+  const btnSecondary = { padding: "8px 16px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#ffffff", cursor: "pointer", fontSize: "12.5px", fontWeight: "600" };
+  const thStyle = { padding: "12px 16px", textAlign: "left", fontWeight: "700", color: "#475569", fontSize: "11.5px", textTransform: "uppercase", letterSpacing: "0.5px" };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-      {/* Error banner */}
-      {error && (
-        <div style={{ padding: "10px 16px", backgroundColor: "#fee2e2", borderRadius: "8px", color: "#b91c1c", fontSize: "13px" }}>
-          ⚠️ {error} — Pastikan backend berjalan dan MySQL aktif.
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div>
+          <h1 style={{ fontSize: "24px", fontWeight: "800", color: "#0f172a", margin: "0 0 4px 0" }}>Data Gedung</h1>
+          <p style={{ fontSize: "13.5px", color: "#64748b", margin: 0 }}>Kelola data gedung, lantai, dan kamar asrama</p>
+        </div>
+        <button onClick={openAddModal} style={{ ...btnPrimary, padding: "10px 18px", display: "flex", alignItems: "center", gap: "6px", boxShadow: "0 4px 14px -2px rgba(35,73,212,0.4)" }}>
+          <Plus size={16} /> Tambah Gedung
+        </button>
+      </div>
+
+      {/* Search */}
+      <div className="content-card" style={{ padding: "16px 20px" }}>
+        <div style={{ position: "relative" }}>
+          <Search size={16} color="#94a3b8" style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)" }} />
+          <input placeholder="Cari gedung atau fasilitator..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+            style={{ ...inputStyle, paddingLeft: "36px", height: "40px", backgroundColor: "#fff" }} />
+        </div>
+      </div>
+
+      {error && <div style={{ padding: "12px 16px", backgroundColor: "#fef2f2", border: "1px solid #fecaca", borderRadius: "10px", color: "#b91c1c", fontSize: "13px" }}>⚠️ {error}</div>}
+      {loading && <div style={{ textAlign: "center", padding: "40px", color: "#64748b" }}>Memuat data...</div>}
+
+      {/* Gedung Table */}
+      {!loading && (
+        <div className="content-card" style={{ padding: 0, overflow: "hidden" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+            <thead>
+              <tr style={{ backgroundColor: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+                <th style={thStyle}>No</th>
+                <th style={thStyle}>Nama Gedung</th>
+                <th style={thStyle}>Fasilitator</th>
+                <th style={{ ...thStyle, textAlign: "center" }}>Lantai</th>
+                <th style={{ ...thStyle, textAlign: "center" }}>Kamar</th>
+                <th style={{ ...thStyle, textAlign: "center" }}>Aksi</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredGedung.length === 0 ? (
+                <tr><td colSpan={6} style={{ padding: "32px", textAlign: "center", color: "#94a3b8" }}>
+                  {searchQuery ? "Tidak ada gedung yang cocok" : "Belum ada data gedung"}
+                </td></tr>
+              ) : filteredGedung.map((g, i) => {
+                const kamars = getKamarForGedung(g.idGedung);
+                const lantais = getLantaiForGedung(g.idGedung);
+                const isExpanded = expandedGedung === g.idGedung;
+                return (
+                  <React.Fragment key={g.idGedung}>
+                    <tr style={{ borderBottom: "1px solid #f1f5f9", cursor: "pointer", backgroundColor: isExpanded ? "#f0f7ff" : "transparent" }}
+                      onClick={() => setExpandedGedung(isExpanded ? null : g.idGedung)}>
+                      <td style={{ padding: "14px 16px", color: "#64748b" }}>{i + 1}</td>
+                      <td style={{ padding: "14px 16px", fontWeight: "700", color: "#0f172a" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <Building2 size={16} color="#2349d4" /> {g.namaGedung}
+                        </div>
+                      </td>
+                      <td style={{ padding: "14px 16px", color: "#475569" }}>{g.namaFasil || "-"}</td>
+                      <td style={{ padding: "14px 16px", textAlign: "center" }}>
+                        <span style={{ backgroundColor: "#e8effe", color: "#2349d4", padding: "2px 10px", borderRadius: "9999px", fontWeight: "700", fontSize: "12px" }}>{lantais.length}</span>
+                      </td>
+                      <td style={{ padding: "14px 16px", textAlign: "center" }}>
+                        <span style={{ backgroundColor: "#dcfce7", color: "#15803d", padding: "2px 10px", borderRadius: "9999px", fontWeight: "700", fontSize: "12px" }}>{kamars.length}</span>
+                      </td>
+                      <td style={{ padding: "14px 16px", textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
+                        <div style={{ display: "flex", justifyContent: "center", gap: "6px" }}>
+                          <button onClick={() => openEditModal(g)} title="Edit" style={{ border: "none", background: "#f0f7ff", borderRadius: "6px", width: "30px", height: "30px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            <Edit2 size={14} color="#2349d4" />
+                          </button>
+                          <button onClick={() => handleDeleteGedung(g)} title="Hapus" style={{ border: "none", background: "#fef2f2", borderRadius: "6px", width: "30px", height: "30px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            <Trash2 size={14} color="#ef4444" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <tr>
+                        <td colSpan={6} style={{ padding: "0 16px 16px 48px", backgroundColor: "#fafbff" }}>
+                          {lantais.length === 0 ? (
+                            <div style={{ color: "#94a3b8", fontSize: "12px", padding: "12px 0" }}>Belum ada lantai/kamar</div>
+                          ) : lantais.map(l => {
+                            const kamarsOnFloor = kamars.filter(k => k.lantai === l);
+                            return (
+                              <div key={l} style={{ marginTop: "12px" }}>
+                                <div style={{ fontSize: "12px", fontWeight: "700", color: "#475569", marginBottom: "6px" }}>Lantai {l} ({kamarsOnFloor.length} kamar)</div>
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                                  {kamarsOnFloor.map(k => (
+                                    <div key={k.noKamar} style={{ display: "flex", alignItems: "center", gap: "6px", backgroundColor: "#fff", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "4px 10px", fontSize: "12px", color: "#334155" }}>
+                                      {k.noKamar}
+                                      <button onClick={() => handleDeleteKamar(k.noKamar)} style={{ border: "none", background: "transparent", cursor: "pointer", padding: 0, display: "flex" }} title="Hapus kamar">
+                                        <X size={12} color="#ef4444" />
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 
-      {/* Loading indicator */}
-      {loading && (
-        <div style={{ padding: "10px 16px", backgroundColor: "#eff6ff", borderRadius: "8px", color: "#1d4ed8", fontSize: "13px" }}>
-          ⏳ Memuat data dari database...
-        </div>
-      )}
-
-      {/* 1. Header Row */}
-      <div>
-        <div
-          style={{
-            fontSize: "11px",
-            fontWeight: "800",
-            color: "#2349d4",
-            letterSpacing: "1.2px",
-            textTransform: "uppercase",
-            marginBottom: "4px"
-          }}
-        >
-          KONFIGURASI ASRAMA
-        </div>
-        <h1
-          style={{
-            fontSize: "24px",
-            fontWeight: "800",
-            color: "#0f172a",
-            letterSpacing: "-0.4px",
-            margin: "0 0 4px 0"
-          }}
-        >
-          Master Data
-        </h1>
-        <p style={{ fontSize: "13.5px", color: "#64748b", margin: 0 }}>
-          Kelola struktur gedung, lantai, dan kamar.
-        </p>
-      </div>
-
-      {/* 2. Subtabs: Gedung | Lantai | Kamar */}
-      <div style={{ display: "flex", gap: "10px" }}>
-        {/* Gedung tab */}
-        <button
-          onClick={() => setActiveSubTab("gedung")}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "8px",
-            padding: "8px 18px",
-            borderRadius: "12px",
-            border: activeSubTab === "gedung" ? "none" : "1px solid #e2e8f0",
-            backgroundColor: activeSubTab === "gedung" ? "#2349d4" : "#ffffff",
-            color: activeSubTab === "gedung" ? "#ffffff" : "#475569",
-            fontSize: "13px",
-            fontWeight: "700",
-            cursor: "pointer",
-            boxShadow: activeSubTab === "gedung" ? "0 4px 14px -2px rgba(35, 73, 212, 0.4)" : "none"
-          }}
-        >
-          <span>Gedung</span>
-          <span
-            style={{
-              fontSize: "10.5px",
-              fontWeight: "700",
-              backgroundColor: activeSubTab === "gedung" ? "#f59e0b" : "#f1f5f9",
-              color: activeSubTab === "gedung" ? "#ffffff" : "#64748b",
-              padding: "1px 6px",
-              borderRadius: "6px"
-            }}
-          >
-            {gedungList.length}
-          </span>
-        </button>
-
-        {/* Lantai tab */}
-        <button
-          onClick={() => setActiveSubTab("lantai")}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "8px",
-            padding: "8px 18px",
-            borderRadius: "12px",
-            border: activeSubTab === "lantai" ? "none" : "1px solid #e2e8f0",
-            backgroundColor: activeSubTab === "lantai" ? "#2349d4" : "#ffffff",
-            color: activeSubTab === "lantai" ? "#ffffff" : "#475569",
-            fontSize: "13px",
-            fontWeight: "700",
-            cursor: "pointer",
-            boxShadow: activeSubTab === "lantai" ? "0 4px 14px -2px rgba(35, 73, 212, 0.4)" : "none"
-          }}
-        >
-          <span>Lantai</span>
-          <span
-            style={{
-              fontSize: "10.5px",
-              fontWeight: "700",
-              backgroundColor: activeSubTab === "lantai" ? "#f59e0b" : "#f1f5f9",
-              color: activeSubTab === "lantai" ? "#ffffff" : "#64748b",
-              padding: "1px 6px",
-              borderRadius: "6px"
-            }}
-          >
-            {lantaiList.length}
-          </span>
-        </button>
-
-        {/* Kamar tab */}
-        <button
-          onClick={() => setActiveSubTab("kamar")}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "8px",
-            padding: "8px 18px",
-            borderRadius: "12px",
-            border: activeSubTab === "kamar" ? "none" : "1px solid #e2e8f0",
-            backgroundColor: activeSubTab === "kamar" ? "#2349d4" : "#ffffff",
-            color: activeSubTab === "kamar" ? "#ffffff" : "#475569",
-            fontSize: "13px",
-            fontWeight: "700",
-            cursor: "pointer",
-            boxShadow: activeSubTab === "kamar" ? "0 4px 14px -2px rgba(35, 73, 212, 0.4)" : "none"
-          }}
-        >
-          <span>Kamar</span>
-          <span
-            style={{
-              fontSize: "10.5px",
-              fontWeight: "700",
-              backgroundColor: activeSubTab === "kamar" ? "#f59e0b" : "#f1f5f9",
-              color: activeSubTab === "kamar" ? "#ffffff" : "#64748b",
-              padding: "1px 6px",
-              borderRadius: "6px"
-            }}
-          >
-            {kamarList.length}
-          </span>
-        </button>
-      </div>
-
-      {/* 3. Main Table Card */}
-      <div className="content-card" style={{ padding: "20px 24px" }}>
-        {/* Top Filter and Action Button */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px" }}>
-          <div style={{ position: "relative", width: "320px" }}>
-            <Search
-              size={15}
-              style={{
-                position: "absolute",
-                left: "12px",
-                top: "50%",
-                transform: "translateY(-50%)",
-                color: "#94a3b8"
-              }}
-            />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={`Cari ${activeSubTab}...`}
-              style={{
-                width: "100%",
-                height: "38px",
-                paddingLeft: "36px",
-                paddingRight: "12px",
-                borderRadius: "10px",
-                border: "1px solid #e2e8f0",
-                backgroundColor: "#f8fafc",
-                fontSize: "12.5px",
-                outline: "none",
-                boxSizing: "border-box"
-              }}
-            />
-          </div>
-
-          {activeSubTab === "gedung" && (
-            <button
-              onClick={() => setShowModalGedung(true)}
-              style={{
-                backgroundColor: "#2349d4",
-                border: "none",
-                color: "#ffffff",
-                fontWeight: "700",
-                fontSize: "12.5px",
-                padding: "9px 18px",
-                borderRadius: "10px",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "6px",
-                cursor: "pointer",
-                boxShadow: "0 4px 14px -2px rgba(35, 73, 212, 0.4)"
-              }}
-            >
-              <Plus size={15} />
-              Tambah Gedung
-            </button>
-          )}
-
-          {activeSubTab === "lantai" && (
-            <button
-              onClick={() => setShowModalLantai(true)}
-              style={{
-                backgroundColor: "#2349d4",
-                border: "none",
-                color: "#ffffff",
-                fontWeight: "700",
-                fontSize: "12.5px",
-                padding: "9px 18px",
-                borderRadius: "10px",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "6px",
-                cursor: "pointer",
-                boxShadow: "0 4px 14px -2px rgba(35, 73, 212, 0.4)"
-              }}
-            >
-              <Plus size={15} />
-              Tambah Lantai
-            </button>
-          )}
-
-          {activeSubTab === "kamar" && (
-            <button
-              onClick={() => setShowModalKamar(true)}
-              style={{
-                backgroundColor: "#2349d4",
-                border: "none",
-                color: "#ffffff",
-                fontWeight: "700",
-                fontSize: "12.5px",
-                padding: "9px 18px",
-                borderRadius: "10px",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "6px",
-                cursor: "pointer",
-                boxShadow: "0 4px 14px -2px rgba(35, 73, 212, 0.4)"
-              }}
-            >
-              <Plus size={15} />
-              Tambah Kamar
-            </button>
-          )}
-        </div>
-
-        {/* 3.1 Gedung Table */}
-        {activeSubTab === "gedung" && (
-          <div className="data-table-container">
-            <table className="asrama-data-table">
-              <thead>
-                <tr>
-                  <th>Nama Gedung</th>
-                  <th>Latitude</th>
-                  <th>Longitude</th>
-                  <th>Radius</th>
-                  <th>Fasil Pengelola</th>
-                  <th style={{ textAlign: "center" }}>Aksi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {gedungList.map((g) => (
-                  <tr key={g.id}>
-                    <td>
-                      <span style={{ fontWeight: "700", color: "#0f172a" }}>{g.nama}</span>
-                    </td>
-                    <td>{g.lat}</td>
-                    <td>{g.lng}</td>
-                    <td>{g.radius}</td>
-                    <td>
-                      <span style={{ fontWeight: "600", color: "#334155" }}>{g.fasil}</span>
-                    </td>
-                    <td style={{ textAlign: "center" }}>
-                      <div style={{ display: "inline-flex", gap: "8px" }}>
-                        <button
-                          style={{
-                            border: "none",
-                            background: "none",
-                            color: "#64748b",
-                            cursor: "pointer",
-                            padding: "4px"
-                          }}
-                          title="Edit"
-                          onClick={() => alert(`Edit ${g.nama}`)}
-                        >
-                          <Edit2 size={15} />
-                        </button>
-                        <button
-                          style={{
-                            border: "none",
-                            background: "none",
-                            color: "#ef4444",
-                            cursor: "pointer",
-                            padding: "4px"
-                          }}
-                          title="Hapus"
-                          onClick={() => handleDeleteGedung(g.id)}
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* 3.2 Lantai Table */}
-        {activeSubTab === "lantai" && (
-          <div className="data-table-container">
-            <table className="asrama-data-table">
-              <thead>
-                <tr>
-                  <th>Gedung</th>
-                  <th>Nomor Lantai</th>
-                  <th>Jumlah Kamar</th>
-                  <th style={{ textAlign: "center" }}>Aksi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {lantaiList.map((l) => (
-                  <tr key={l.id}>
-                    <td>
-                      <span style={{ fontWeight: "700", color: "#0f172a" }}>{l.gedung}</span>
-                    </td>
-                    <td>{l.nomor}</td>
-                    <td>{l.kamar}</td>
-                    <td style={{ textAlign: "center" }}>
-                      <div style={{ display: "inline-flex", gap: "8px" }}>
-                        <button style={{ border: "none", background: "none", color: "#64748b", cursor: "pointer" }}>
-                          <Edit2 size={15} />
-                        </button>
-                        <button
-                          style={{ border: "none", background: "none", color: "#ef4444", cursor: "pointer" }}
-                          onClick={() => setLantaiList(lantaiList.filter((x) => x.id !== l.id))}
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* 3.3 Kamar Table */}
-        {activeSubTab === "kamar" && (
-          <div className="data-table-container">
-            <table className="asrama-data-table">
-              <thead>
-                <tr>
-                  <th>Nomor Kamar</th>
-                  <th>Gedung</th>
-                  <th>Lantai</th>
-                  <th>Kapasitas</th>
-                  <th>Terisi</th>
-                  <th style={{ textAlign: "center" }}>Aksi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {kamarList.map((k) => (
-                  <tr key={k.id}>
-                    <td>
-                      <span style={{ fontWeight: "700", color: "#0f172a" }}>{k.nomor}</span>
-                    </td>
-                    <td>{k.gedung}</td>
-                    <td>Lantai {k.lantai}</td>
-                    <td>{k.kapasitas}</td>
-                    <td>
-                      <span className="badge-status-blue" style={{ fontSize: "11px", padding: "2px 8px" }}>
-                        {k.terisi}
-                      </span>
-                    </td>
-                    <td style={{ textAlign: "center" }}>
-                      <div style={{ display: "inline-flex", gap: "8px" }}>
-                        <button style={{ border: "none", background: "none", color: "#64748b", cursor: "pointer" }}>
-                          <Edit2 size={15} />
-                        </button>
-                        <button
-                          style={{ border: "none", background: "none", color: "#ef4444", cursor: "pointer" }}
-                          onClick={() => handleDeleteKamar(k.nomor)}
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* Table Footer */}
-        <div className="table-pagination-row">
-          <div style={{ fontSize: "12.5px", color: "#64748b" }}>
-            Menampilkan {activeSubTab === "gedung" ? gedungList.length : activeSubTab === "lantai" ? lantaiList.length : kamarList.length} data
-          </div>
-          <div className="pagination-controls">
-            <button className="page-num-btn active">1</button>
-          </div>
-        </div>
-      </div>
-
-      {/* 4. MODAL: Tambah Gedung (Screenshot 2 Left) */}
-      {showModalGedung && (
-        <div className="modal-backdrop-overlay" onClick={() => setShowModalGedung(false)}>
-          <div className="modal-dialog-box" style={{ maxWidth: "600px" }} onClick={(e) => e.stopPropagation()}>
+      {/* Modal Tambah/Edit Gedung */}
+      {showModal && (
+        <div className="modal-backdrop-overlay" onClick={() => setShowModal(false)}>
+          <div className="modal-dialog-box" style={{ maxWidth: "560px", maxHeight: "85vh", overflow: "auto" }} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
               <div>
-                <div style={{ fontSize: "11px", fontWeight: "800", color: "#2349d4", letterSpacing: "1px", textTransform: "uppercase" }}>
-                  MASTER DATA
-                </div>
+                <div style={{ fontSize: "11px", fontWeight: "800", color: "#2349d4", letterSpacing: "1px", textTransform: "uppercase" }}>DATA GEDUNG</div>
                 <h3 style={{ fontSize: "18px", fontWeight: "800", color: "#0f172a", margin: "2px 0 0 0" }}>
-                  Tambah Gedung
+                  {editingGedung ? "Edit Gedung" : "Tambah Gedung Baru"}
                 </h3>
               </div>
-              <button
-                onClick={() => setShowModalGedung(false)}
-                style={{ border: "none", background: "#f1f5f9", borderRadius: "8px", width: "28px", height: "28px", cursor: "pointer" }}
-              >
+              <button onClick={() => setShowModal(false)} style={{ border: "none", background: "#f1f5f9", borderRadius: "8px", width: "28px", height: "28px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <X size={16} color="#64748b" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveGedung} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "12px" }}>
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: "700", color: "#334155", marginBottom: "4px" }}>
-                    Nama Gedung *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formGedung.nama}
-                    onChange={(e) => setFormGedung({ ...formGedung, nama: e.target.value })}
-                    placeholder="Contoh: Gedung A"
-                    style={{
-                      width: "100%",
-                      height: "38px",
-                      padding: "0 12px",
-                      borderRadius: "8px",
-                      border: "1px solid #e2e8f0",
-                      backgroundColor: "#f8fafc",
-                      fontSize: "12.5px",
-                      boxSizing: "border-box"
-                    }}
-                  />
-                </div>
+            {formError && <div style={{ padding: "10px 14px", backgroundColor: "#fef2f2", border: "1px solid #fecaca", borderRadius: "8px", color: "#b91c1c", fontSize: "12px", marginBottom: "12px" }}>{formError}</div>}
 
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: "700", color: "#334155", marginBottom: "4px" }}>
-                    ID Fasil Pengelola *
-                  </label>
-                  <select
-                    value={formGedung.idUser}
-                    onChange={(e) => setFormGedung({ ...formGedung, idUser: e.target.value })}
-                    required
-                    style={{
-                      width: "100%",
-                      height: "38px",
-                      padding: "0 12px",
-                      borderRadius: "8px",
-                      border: "1px solid #e2e8f0",
-                      backgroundColor: "#f8fafc",
-                      fontSize: "12.5px",
-                      cursor: "pointer"
-                    }}
-                  >
-                    <option value="">-- Pilih Fasil --</option>
-                    {gedungList
-                      .filter((g, i, arr) => arr.findIndex(x => x.idUser === g.idUser) === i && g.idUser)
-                      .map(g => (
-                        <option key={g.idUser} value={g.idUser}>{g.fasil} (ID: {g.idUser})</option>
-                      ))
-                    }
-                  </select>
-                  <p style={{ fontSize: "11px", color: "#94a3b8", margin: "4px 0 0 0" }}>
-                    Pilih dari daftar fasil yang sudah terdaftar di database.
-                  </p>
-                </div>
+            <form onSubmit={handleSave} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+              <div>
+                <label style={labelStyle}>Nama Gedung *</label>
+                <input type="text" required value={formData.namaGedung} onChange={(e) => setFormData({ ...formData, namaGedung: e.target.value })} placeholder="Contoh: Asrama Putra A" style={inputStyle} />
               </div>
 
-              {/* Map Preview Simulation */}
-              <div
-                style={{
-                  height: "170px",
-                  borderRadius: "12px",
-                  backgroundColor: "#e8eff4",
-                  position: "relative",
-                  overflow: "hidden",
-                  border: "1px solid #cbd5e1",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center"
-                }}
-              >
-                {/* Simulated Roads */}
-                <div style={{ position: "absolute", width: "100%", height: "18px", backgroundColor: "#ffffff", transform: "rotate(-18deg)" }} />
-                <div style={{ position: "absolute", width: "100%", height: "22px", backgroundColor: "#ffffff", transform: "rotate(40deg)" }} />
-
-                {/* Geofence circular radius */}
-                <div
-                  style={{
-                    width: "90px",
-                    height: "90px",
-                    borderRadius: "50%",
-                    backgroundColor: "rgba(35, 73, 212, 0.15)",
-                    border: "2px solid #2349d4",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    position: "relative",
-                    zIndex: 2
-                  }}
-                >
-                  <MapPin size={22} color="#2349d4" fill="#2349d4" />
-                </div>
-
-                {/* Map hint */}
-                <span
-                  style={{
-                    position: "absolute",
-                    bottom: "8px",
-                    backgroundColor: "rgba(255, 255, 255, 0.85)",
-                    padding: "3px 10px",
-                    borderRadius: "6px",
-                    fontSize: "10.5px",
-                    color: "#475569",
-                    zIndex: 2
-                  }}
-                >
-                  Klik pada peta untuk menentukan radius
-                </span>
+              <div>
+                <label style={labelStyle}>Fasilitator *</label>
+                <select required value={formData.idUser} onChange={(e) => setFormData({ ...formData, idUser: e.target.value })} style={{ ...inputStyle, cursor: "pointer" }}>
+                  <option value="">-- Pilih Fasilitator --</option>
+                  {fasilList.map((f) => <option key={f.idUser} value={f.idUser}>{f.nama} ({f.nim})</option>)}
+                </select>
               </div>
 
-              {/* Gunakan Lokasi Saya button */}
-              <button
-                type="button"
-                onClick={() => {
-                  setFormGedung({ ...formGedung, lat: "-0.9411", lng: "100.4172" });
-                  alert("Lokasi GPS saat ini berhasil diterapkan.");
-                }}
-                style={{
-                  width: "100%",
-                  height: "38px",
-                  backgroundColor: "#f0f6ff",
-                  border: "1px solid #bfdbfe",
-                  borderRadius: "8px",
-                  color: "#2349d4",
-                  fontSize: "12.5px",
-                  fontWeight: "700",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "6px"
-                }}
-              >
-                <Crosshair size={14} />
-                Gunakan Lokasi Saya
-              </button>
+              {/* Lantai & Kamar */}
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                  <label style={{ ...labelStyle, marginBottom: 0 }}>Lantai & Kamar</label>
+                  <button type="button" onClick={addLantai} style={{ ...btnSecondary, padding: "4px 10px", fontSize: "11px", display: "flex", alignItems: "center", gap: "4px" }}>
+                    <Plus size={12} /> Tambah Lantai
+                  </button>
+                </div>
+
+                {formLantaiKamar.map((lk, lIdx) => (
+                  <div key={lIdx} style={{ backgroundColor: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "12px", marginBottom: "10px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <label style={{ fontSize: "11.5px", fontWeight: "700", color: "#475569" }}>Lantai</label>
+                        <input type="number" min="1" value={lk.lantai} onChange={(e) => updateLantaiNumber(lIdx, e.target.value)}
+                          style={{ ...inputStyle, width: "60px", height: "30px", textAlign: "center", fontSize: "12px" }} />
+                      </div>
+                      {formLantaiKamar.length > 1 && (
+                        <button type="button" onClick={() => removeLantai(lIdx)} style={{ border: "none", background: "#fef2f2", borderRadius: "6px", width: "24px", height: "24px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          <Trash2 size={12} color="#ef4444" />
+                        </button>
+                      )}
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "6px" }}>
+                      {lk.kamars.map((km, kIdx) => (
+                        <div key={kIdx} style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                          <input type="text" value={km} onChange={(e) => updateKamarName(lIdx, kIdx, e.target.value)} placeholder={`Kamar ${kIdx + 1}`}
+                            style={{ ...inputStyle, width: "100px", height: "30px", fontSize: "11.5px" }} />
+                          {lk.kamars.length > 1 && (
+                            <button type="button" onClick={() => removeKamarFromLantai(lIdx, kIdx)} style={{ border: "none", background: "transparent", cursor: "pointer", padding: "2px" }}>
+                              <X size={12} color="#94a3b8" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <button type="button" onClick={() => addKamarToLantai(lIdx)} style={{ border: "1px dashed #cbd5e1", background: "transparent", borderRadius: "6px", padding: "4px 10px", fontSize: "11px", color: "#64748b", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px" }}>
+                      <Plus size={11} /> Tambah Kamar
+                    </button>
+                  </div>
+                ))}
+              </div>
 
               <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "6px" }}>
-                <button
-                  type="button"
-                  onClick={() => setShowModalGedung(false)}
-                  style={{ padding: "8px 16px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#ffffff", cursor: "pointer", fontSize: "12.5px", fontWeight: "600" }}
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  style={{ padding: "8px 20px", borderRadius: "8px", border: "none", backgroundColor: "#2349d4", color: "#ffffff", cursor: "pointer", fontSize: "12.5px", fontWeight: "700" }}
-                >
-                  Simpan
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* 5. MODAL: Tambah Lantai (Screenshot 2 Right) */}
-      {showModalLantai && (
-        <div className="modal-backdrop-overlay" onClick={() => setShowModalLantai(false)}>
-          <div className="modal-dialog-box" style={{ maxWidth: "440px" }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
-              <div>
-                <div style={{ fontSize: "11px", fontWeight: "800", color: "#2349d4", letterSpacing: "1px", textTransform: "uppercase" }}>
-                  MASTER DATA
-                </div>
-                <h3 style={{ fontSize: "18px", fontWeight: "800", color: "#0f172a", margin: "2px 0 0 0" }}>
-                  Tambah Lantai
-                </h3>
-              </div>
-              <button
-                onClick={() => setShowModalLantai(false)}
-                style={{ border: "none", background: "#f1f5f9", borderRadius: "8px", width: "28px", height: "28px", cursor: "pointer" }}
-              >
-                <X size={16} color="#64748b" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveLantai} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: "700", color: "#334155", marginBottom: "4px" }}>
-                    Gedung *
-                  </label>
-                  <select
-                    value={formLantai.gedung}
-                    onChange={(e) => setFormLantai({ ...formLantai, gedung: e.target.value })}
-                    style={{ width: "100%", height: "38px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12.5px" }}
-                  >
-                    {gedungList.map((g) => (
-                      <option key={g.id} value={g.nama}>{g.nama}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: "700", color: "#334155", marginBottom: "4px" }}>
-                    Nomor Lantai *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formLantai.nomor}
-                    onChange={(e) => setFormLantai({ ...formLantai, nomor: e.target.value })}
-                    placeholder="Contoh: Lantai 3"
-                    style={{ width: "100%", height: "38px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12.5px", boxSizing: "border-box" }}
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
-                <button
-                  type="button"
-                  onClick={() => setShowModalLantai(false)}
-                  style={{ padding: "8px 16px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#ffffff", cursor: "pointer", fontSize: "12.5px", fontWeight: "600" }}
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  style={{ padding: "8px 20px", borderRadius: "8px", border: "none", backgroundColor: "#2349d4", color: "#ffffff", cursor: "pointer", fontSize: "12.5px", fontWeight: "700" }}
-                >
-                  Simpan
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* 6. MODAL: Tambah Kamar (Screenshot 3 Left) */}
-      {showModalKamar && (
-        <div className="modal-backdrop-overlay" onClick={() => setShowModalKamar(false)}>
-          <div className="modal-dialog-box" style={{ maxWidth: "460px" }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
-              <div>
-                <div style={{ fontSize: "11px", fontWeight: "800", color: "#2349d4", letterSpacing: "1px", textTransform: "uppercase" }}>
-                  MASTER DATA
-                </div>
-                <h3 style={{ fontSize: "18px", fontWeight: "800", color: "#0f172a", margin: "2px 0 0 0" }}>
-                  Tambah Kamar
-                </h3>
-              </div>
-              <button
-                onClick={() => setShowModalKamar(false)}
-                style={{ border: "none", background: "#f1f5f9", borderRadius: "8px", width: "28px", height: "28px", cursor: "pointer" }}
-              >
-                <X size={16} color="#64748b" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveKamar} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: "700", color: "#334155", marginBottom: "4px" }}>
-                    Gedung *
-                  </label>
-                  <select
-                    value={formKamar.idGedung}
-                    onChange={(e) => setFormKamar({ ...formKamar, idGedung: e.target.value })}
-                    required
-                    style={{ width: "100%", height: "38px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12.5px" }}
-                  >
-                    <option value="">-- Pilih Gedung --</option>
-                    {gedungList.map((g) => (
-                      <option key={g.id} value={g.id}>{g.nama}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: "700", color: "#334155", marginBottom: "4px" }}>
-                    Lantai *
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    min="1"
-                    value={formKamar.lantai}
-                    onChange={(e) => setFormKamar({ ...formKamar, lantai: e.target.value })}
-                    placeholder="Contoh: 1"
-                    style={{ width: "100%", height: "38px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12.5px", boxSizing: "border-box" }}
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "12px" }}>
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: "700", color: "#334155", marginBottom: "4px" }}>
-                    Nomor Kamar *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formKamar.noKamar}
-                    onChange={(e) => setFormKamar({ ...formKamar, noKamar: e.target.value })}
-                    placeholder="Contoh: A-101"
-                    style={{ width: "100%", height: "38px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12.5px", boxSizing: "border-box" }}
-                  />
-                </div>
-              </div>
-              </div>
-
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
-                <button
-                  type="button"
-                  onClick={() => setShowModalKamar(false)}
-                  style={{ padding: "8px 16px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#ffffff", cursor: "pointer", fontSize: "12.5px", fontWeight: "600" }}
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  style={{ padding: "8px 20px", borderRadius: "8px", border: "none", backgroundColor: "#2349d4", color: "#ffffff", cursor: "pointer", fontSize: "12.5px", fontWeight: "700" }}
-                >
-                  Simpan
-                </button>
+                <button type="button" onClick={() => setShowModal(false)} style={btnSecondary} disabled={formLoading}>Batal</button>
+                <button type="submit" style={btnPrimary} disabled={formLoading}>{formLoading ? "Menyimpan..." : "Simpan"}</button>
               </div>
             </form>
           </div>

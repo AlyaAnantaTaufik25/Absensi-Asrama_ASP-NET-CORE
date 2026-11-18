@@ -6,22 +6,18 @@ import {
   Users,
   UserCheck,
   KeyRound,
-  ShieldCheck,
   BarChart3,
-  TrendingUp,
   LogOut
 } from "lucide-react";
 
 export default function AdminSidebar({ activeTab, setActiveTab, onLogout }) {
   const menuItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { id: "master-data", label: "Master Data", icon: Database },
+    { id: "data-gedung", label: "Data Gedung", icon: Database },
     { id: "data-penghuni", label: "Data Penghuni", icon: Users },
     { id: "data-fasil", label: "Data Fasil", icon: UserCheck },
     { id: "akun-pengguna", label: "Akun Pengguna", icon: KeyRound },
-    { id: "hak-akses", label: "Hak Akses", icon: ShieldCheck },
     { id: "rekapitulasi", label: "Rekapitulasi Presensi", icon: BarChart3 },
-    { id: "analytics", label: "Analytics & Export", icon: TrendingUp }
   ];
 
   return (

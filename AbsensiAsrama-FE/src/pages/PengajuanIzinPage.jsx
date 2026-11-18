@@ -10,22 +10,23 @@ import {
   UploadCloud,
   Trash2,
   Info,
-  CheckCircle2,
-  Clock,
-  Briefcase,
-  HeartPulse
+  HeartPulse,
+  Briefcase
 } from "lucide-react";
 import { submitIzin, getPerizinan } from "../services/api";
 
+const PAGE_SIZE = 10;
+
 export default function PengajuanIzinPage({ user }) {
-  const [activeTab, setActiveTab] = useState("riwayat"); // "riwayat" or "form"
+  const [activeTab, setActiveTab] = useState("riwayat");
   const [showModal, setShowModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("Semua");
   const [statusFilter, setStatusFilter] = useState("Semua");
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Form State
-  const [jenisIzin, setJenisIzin] = useState("sakit"); // "sakit" or "izin"
+  const [jenisIzin, setJenisIzin] = useState("sakit");
   const [startDate, setStartDate] = useState(new Date().toISOString().split("T")[0]);
   const [endDate, setEndDate] = useState(new Date().toISOString().split("T")[0]);
   const [selectedSessions, setSelectedSessions] = useState({
@@ -36,93 +37,131 @@ export default function PengajuanIzinPage({ user }) {
   const [reason, setReason] = useState("");
   const [attachedFile, setAttachedFile] = useState(null);
 
-  // Table Data - Kosong secara default sampai dimuat dari MySQL
+  // Data dari database
   const [izinList, setIzinList] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [dbError, setDbError] = useState(null);
 
-  // Muat data izin dari database MySQL
+  // Role-based: penghuni hanya lihat milik sendiri, fasil/admin lihat semua
+  const isAdmin = user?.role === "admin" || user?.role === "fasil";
+
+  // Muat data perizinan dari database
   React.useEffect(() => {
     async function loadIzin() {
       setIsLoading(true);
+      setDbError(null);
       try {
         const data = await getPerizinan();
         if (Array.isArray(data)) {
-          const userIzin = user?.nim ? data.filter((d) => d.nim === user.nim) : data;
+          const filtered = isAdmin
+            ? data
+            : data.filter((d) => d.nim === user?.nim);
+
           setIzinList(
-            userIzin.map((item, idx) => ({
-              id: item.idIzin || idx + 1,
-              jenis: item.alasan?.toLowerCase().includes("sakit") ? "Sakit" : "Izin",
-              rentang: item.tanggal
-                ? new Date(item.tanggal).toLocaleDateString("id-ID", {
-                    day: "numeric",
-                    month: "short",
-                    year: "numeric"
-                  })
-                : "-",
-              subRentang: "Sesi Izin Terdaftar",
-              alasan: item.alasan || "Pengajuan Perizinan",
-              subAlasan: `NIM: ${item.nim || "-"}`,
-              dokumen: item.fileBukti || "Surat_Permohonan.pdf",
-              status: "Tercatat di Database",
-              statusType: "green"
-            }))
+            filtered.map((item) => {
+              const alasanLower = (item.alasan || "").toLowerCase();
+              const jenis = alasanLower.startsWith("sakit")
+                ? "Sakit"
+                : alasanLower.startsWith("izin")
+                ? "Izin"
+                : "Lainnya";
+
+              return {
+                id: item.idIzin,
+                nim: item.nim,
+                jenis,
+                rentang: item.tanggal
+                  ? new Date(item.tanggal).toLocaleDateString("id-ID", {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric"
+                    })
+                  : "-",
+                alasan: item.alasan || "-",
+                dokumen: item.fileBukti || "Tidak ada lampiran",
+                hasDokumen: !!item.fileBukti,
+                status: "Tercatat",
+                statusType: "green"
+              };
+            })
           );
+        } else {
+          setDbError("Gagal memuat data dari database.");
         }
       } catch (err) {
-        console.warn("Gagal memuat izin:", err);
+        setDbError("Backend tidak dapat dijangkau. Pastikan dotnet run sudah aktif.");
       } finally {
         setIsLoading(false);
       }
     }
     loadIzin();
-  }, [user]);
+  }, [user, isAdmin]);
 
   const handleToggleSession = (key) => {
-    setSelectedSessions((prev) => ({
-      ...prev,
-      [key]: !prev[key]
-    }));
+    setSelectedSessions((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const handleFormSubmit = (e) => {
+  const handleFormSubmit = async (e) => {
     e.preventDefault();
-    const newEntry = {
-      id: Date.now(),
-      jenis: jenisIzin === "sakit" ? "Sakit" : "Izin",
-      rentang: `${startDate} - ${endDate}`,
-      subRentang: selectedSessions.penuh ? "Penuh / Bermalam" : "Sesi Presensi Dipilih",
-      alasan: reason.slice(0, 35) + (reason.length > 35 ? "..." : ""),
-      subAlasan: "Asrama Hijau",
-      dokumen: attachedFile ? attachedFile.name : "Surat_Permohonan.pdf",
-      status: "Menunggu Persetujuan",
-      statusType: "amber"
-    };
-    setIzinList([newEntry, ...izinList]);
-    setShowModal(false);
-    setActiveTab("riwayat");
-
-    // Kirim perizinan ke Backend API
-    submitIzin({
-      nim: user?.nim || "2311523005",
+    const prefix = jenisIzin === "sakit" ? "Sakit: " : "Izin: ";
+    const alasan = `${prefix}${reason}`;
+    const payload = {
+      nim: user?.nim || "",
       tanggal: startDate ? new Date(startDate) : new Date(),
-      alasan: `${jenisIzin === "sakit" ? "Sakit: " : "Izin: "}${reason}`,
+      alasan,
       fileBukti: attachedFile ? attachedFile.name : null
-    }).catch((err) => console.warn("Koneksi backend izin:", err));
+    };
 
-    alert("Permohonan izin baru berhasil diajukan dan disimpan ke database! Menunggu review fasil.");
+    try {
+      await submitIzin(payload);
+      setIzinList((prev) => [
+        {
+          id: Date.now(),
+          nim: user?.nim || "-",
+          jenis: jenisIzin === "sakit" ? "Sakit" : "Izin",
+          rentang: new Date(startDate).toLocaleDateString("id-ID", {
+            day: "numeric",
+            month: "short",
+            year: "numeric"
+          }),
+          alasan,
+          dokumen: attachedFile ? attachedFile.name : "Tidak ada lampiran",
+          hasDokumen: !!attachedFile,
+          status: "Tercatat",
+          statusType: "green"
+        },
+        ...prev
+      ]);
+      setShowModal(false);
+      setReason("");
+      setAttachedFile(null);
+      alert("Permohonan izin berhasil disimpan ke database.");
+    } catch {
+      alert("Gagal menyimpan ke database. Pastikan backend aktif.");
+    }
   };
+
+  const totalIzin = izinList.length;
+  const totalSakit = izinList.filter((i) => i.jenis === "Sakit").length;
+  const totalBiasa = izinList.filter((i) => i.jenis === "Izin").length;
 
   const filteredList = izinList.filter((item) => {
     const matchSearch =
       item.alasan.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.jenis.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.nim.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.dokumen.toLowerCase().includes(searchQuery.toLowerCase());
     const matchCategory =
-      categoryFilter === "Semua" || item.jenis.toLowerCase() === categoryFilter.toLowerCase();
+      categoryFilter === "Semua" || item.jenis === categoryFilter;
     const matchStatus =
-      statusFilter === "Semua" || item.status.toLowerCase().includes(statusFilter.toLowerCase());
+      statusFilter === "Semua" || item.status === statusFilter;
     return matchSearch && matchCategory && matchStatus;
   });
+
+  const totalPages = Math.max(1, Math.ceil(filteredList.length / PAGE_SIZE));
+  const paginated = filteredList.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE
+  );
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
@@ -130,10 +169,12 @@ export default function PengajuanIzinPage({ user }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
           <h1 style={{ fontSize: "24px", fontWeight: "800", color: "#0f172a", margin: "0 0 4px 0", letterSpacing: "-0.4px" }}>
-            Pengajuan & Riwayat Izin Mahasiswa
+            {isAdmin ? "Manajemen Perizinan" : "Pengajuan & Riwayat Izin"}
           </h1>
           <p style={{ fontSize: "13.5px", color: "#64748b", margin: 0 }}>
-            Permohonan izin keluar asrama, sakit, atau dispensasi kegiatan akademik dan riwayat persetujuan
+            {isAdmin
+              ? "Kelola dan tinjau seluruh permohonan perizinan penghuni asrama"
+              : "Permohonan izin keluar asrama, sakit, atau dispensasi kegiatan akademik"}
           </p>
         </div>
 
@@ -159,100 +200,96 @@ export default function PengajuanIzinPage({ user }) {
             Unduh Rekap Izin
           </button>
 
-          <button
-            onClick={() => setShowModal(true)}
-            style={{
-              backgroundColor: "#2349d4",
-              border: "none",
-              color: "#ffffff",
-              fontWeight: "700",
-              fontSize: "13px",
-              padding: "10px 18px",
-              borderRadius: "10px",
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              cursor: "pointer",
-              boxShadow: "0 4px 14px -2px rgba(35, 73, 212, 0.4)"
-            }}
-          >
-            <Plus size={16} />
-            Ajukan Izin Baru
-          </button>
+          {!isAdmin && (
+            <button
+              onClick={() => setShowModal(true)}
+              style={{
+                backgroundColor: "#2349d4",
+                border: "none",
+                color: "#ffffff",
+                fontWeight: "700",
+                fontSize: "13px",
+                padding: "10px 18px",
+                borderRadius: "10px",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                cursor: "pointer",
+                boxShadow: "0 4px 14px -2px rgba(35, 73, 212, 0.4)"
+              }}
+            >
+              <Plus size={16} />
+              Ajukan Izin Baru
+            </button>
+          )}
         </div>
       </div>
 
       {/* 2. Top 4 Stat Cards */}
       <div className="stat-cards-grid">
-        {/* Card 1: Kuota Izin */}
         <div className="stat-box-card">
           <div style={{ fontSize: "11px", fontWeight: "700", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "8px" }}>
-            KUOTA IZIN SEMESTER
+            {isAdmin ? "TOTAL PERIZINAN" : "TOTAL IZIN SAYA"}
           </div>
           <div style={{ fontSize: "22px", fontWeight: "800", color: "#0f172a", marginBottom: "4px" }}>
-            3 / 6 <span style={{ fontSize: "13px", fontWeight: "500", color: "#64748b" }}>Digunakan</span>
+            {isLoading ? "..." : totalIzin} <span style={{ fontSize: "13px", fontWeight: "500", color: "#64748b" }}>Pengajuan</span>
           </div>
           <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "12px" }}>
-            Tersisa 3 kuota izin
+            {isAdmin ? "Seluruh data perizinan" : `NIM: ${user?.nim || "-"}`}
           </div>
-          {/* Progress bar */}
           <div style={{ width: "100%", height: "4px", backgroundColor: "#f1f5f9", borderRadius: "9999px", overflow: "hidden" }}>
-            <div style={{ width: "50%", height: "100%", backgroundColor: "#2349d4", borderRadius: "9999px" }} />
+            <div style={{ width: "100%", height: "100%", backgroundColor: "#2349d4", borderRadius: "9999px" }} />
           </div>
         </div>
 
-        {/* Card 2: Disetujui */}
         <div className="stat-box-card">
           <div style={{ fontSize: "11px", fontWeight: "700", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "8px" }}>
-            DISETUJUI
+            IZIN SAKIT
           </div>
           <div style={{ fontSize: "22px", fontWeight: "800", color: "#0f172a", marginBottom: "4px" }}>
-            5 Sesi
+            {isLoading ? "..." : totalSakit} <span style={{ fontSize: "13px", fontWeight: "500", color: "#64748b" }}>Data</span>
           </div>
           <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "12px" }}>
-            Semua permohonan telah diverifikasi
+            Perizinan dengan alasan sakit
           </div>
           <div style={{ width: "100%", height: "4px", backgroundColor: "#f1f5f9", borderRadius: "9999px", overflow: "hidden" }}>
-            <div style={{ width: "100%", height: "100%", backgroundColor: "#10b981", borderRadius: "9999px" }} />
+            <div style={{ width: totalIzin ? `${(totalSakit / totalIzin) * 100}%` : "0%", height: "100%", backgroundColor: "#ef4444", borderRadius: "9999px" }} />
           </div>
         </div>
 
-        {/* Card 3: Menunggu Review */}
         <div className="stat-box-card">
           <div style={{ fontSize: "11px", fontWeight: "700", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "8px" }}>
-            MENUNGGU REVIEW
+            IZIN KELUAR
           </div>
           <div style={{ fontSize: "22px", fontWeight: "800", color: "#0f172a", marginBottom: "4px" }}>
-            1 Permohonan
+            {isLoading ? "..." : totalBiasa} <span style={{ fontSize: "13px", fontWeight: "500", color: "#64748b" }}>Data</span>
           </div>
           <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "12px" }}>
-            Sedang ditinjau
+            Perizinan keluar asrama
           </div>
           <div style={{ width: "100%", height: "4px", backgroundColor: "#f1f5f9", borderRadius: "9999px", overflow: "hidden" }}>
-            <div style={{ width: "35%", height: "100%", backgroundColor: "#f59e0b", borderRadius: "9999px" }} />
+            <div style={{ width: totalIzin ? `${(totalBiasa / totalIzin) * 100}%` : "0%", height: "100%", backgroundColor: "#10b981", borderRadius: "9999px" }} />
           </div>
         </div>
 
-        {/* Card 4: Ditolak / Dibatalkan */}
         <div className="stat-box-card">
           <div style={{ fontSize: "11px", fontWeight: "700", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "8px" }}>
-            DITOLAK / DIBATALKAN
+            LAINNYA
           </div>
           <div style={{ fontSize: "22px", fontWeight: "800", color: "#0f172a", marginBottom: "4px" }}>
-            0 Permohonan
+            {isLoading ? "..." : totalIzin - totalSakit - totalBiasa} <span style={{ fontSize: "13px", fontWeight: "500", color: "#64748b" }}>Data</span>
           </div>
           <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "12px" }}>
-            Catatan kepatuhan & kedisiplinan baik
+            Kategori izin lainnya
           </div>
           <div style={{ width: "100%", height: "4px", backgroundColor: "#f1f5f9", borderRadius: "9999px", overflow: "hidden" }}>
-            <div style={{ width: "0%", height: "100%", backgroundColor: "#ef4444", borderRadius: "9999px" }} />
+            <div style={{ width: "0%", height: "100%", backgroundColor: "#f59e0b", borderRadius: "9999px" }} />
           </div>
         </div>
       </div>
 
-      {/* 3. Table Card with Tab bar & Filters */}
+      {/* 3. Table Card */}
       <div className="content-card" style={{ padding: "20px 24px" }}>
-        {/* Top Header of Card: Tabs & Semester Selector */}
         <div
           style={{
             display: "flex",
@@ -263,7 +300,6 @@ export default function PengajuanIzinPage({ user }) {
             marginBottom: "16px"
           }}
         >
-          {/* Left Tabs */}
           <div style={{ display: "flex", gap: "8px" }}>
             <button
               onClick={() => setActiveTab("riwayat")}
@@ -298,7 +334,6 @@ export default function PengajuanIzinPage({ user }) {
             </button>
           </div>
 
-          {/* Right Semester */}
           <div
             style={{
               display: "flex",
@@ -322,7 +357,6 @@ export default function PengajuanIzinPage({ user }) {
 
         {/* Filter Controls Row */}
         <div style={{ display: "grid", gridTemplateColumns: "1.8fr 1.2fr 1fr 1.2fr", gap: "10px", marginBottom: "18px" }}>
-          {/* Search Input */}
           <div style={{ position: "relative" }}>
             <Search
               size={15}
@@ -338,7 +372,7 @@ export default function PengajuanIzinPage({ user }) {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Cari nomor izin, alasan, atau nama musyrif..."
+              placeholder="Cari alasan atau NIM..."
               style={{
                 width: "100%",
                 height: "38px",
@@ -354,7 +388,6 @@ export default function PengajuanIzinPage({ user }) {
             />
           </div>
 
-          {/* Category Dropdown */}
           <select
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
@@ -370,12 +403,12 @@ export default function PengajuanIzinPage({ user }) {
               cursor: "pointer"
             }}
           >
-            <option value="Semua">Semua Kategori (Sakit, Izin)</option>
+            <option value="Semua">Semua Kategori</option>
             <option value="Sakit">Sakit</option>
             <option value="Izin">Izin</option>
+            <option value="Lainnya">Lainnya</option>
           </select>
 
-          {/* Status Dropdown */}
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
@@ -392,11 +425,9 @@ export default function PengajuanIzinPage({ user }) {
             }}
           >
             <option value="Semua">Semua Status</option>
-            <option value="Menunggu">Menunggu</option>
-            <option value="Selesai">Selesai</option>
+            <option value="Tercatat">Tercatat</option>
           </select>
 
-          {/* Rentang Waktu button */}
           <button
             onClick={() => alert("Pilih rentang tanggal...")}
             style={{
@@ -427,81 +458,79 @@ export default function PengajuanIzinPage({ user }) {
             <thead>
               <tr>
                 <th>JENIS IZIN</th>
-                <th>RENTANG WAKTU</th>
+                <th>TANGGAL</th>
                 <th>ALASAN / KETERANGAN</th>
+                {isAdmin && <th>NIM</th>}
                 <th>DOKUMEN BUKTI</th>
                 <th>STATUS</th>
               </tr>
             </thead>
             <tbody>
-              {filteredList.length === 0 ? (
+              {isLoading ? (
                 <tr>
-                  <td colSpan={5} style={{ textAlign: "center", padding: "48px 16px", color: "#94a3b8" }}>
+                  <td colSpan={isAdmin ? 6 : 5} style={{ textAlign: "center", padding: "48px 16px", color: "#94a3b8" }}>
+                    Memuat data dari database...
+                  </td>
+                </tr>
+              ) : dbError ? (
+                <tr>
+                  <td colSpan={isAdmin ? 6 : 5} style={{ textAlign: "center", padding: "48px 16px", color: "#ef4444" }}>
+                    <div style={{ fontSize: "14px", fontWeight: "700" }}>⚠️ {dbError}</div>
+                  </td>
+                </tr>
+              ) : paginated.length === 0 ? (
+                <tr>
+                  <td colSpan={isAdmin ? 6 : 5} style={{ textAlign: "center", padding: "48px 16px", color: "#94a3b8" }}>
                     <FileText size={36} style={{ margin: "0 auto 10px", color: "#cbd5e1" }} />
                     <div style={{ fontSize: "14px", fontWeight: "700", color: "#475569" }}>
-                      Belum Ada Pengajuan Izin di Database
+                      Belum Ada Data Perizinan
                     </div>
                     <div style={{ fontSize: "12px", marginTop: "4px", color: "#94a3b8" }}>
-                      Klik tombol "Ajukan Izin" di atas untuk membuat permohonan baru ke database.
+                      {isAdmin ? "Belum ada perizinan yang diajukan." : "Klik \"Ajukan Izin Baru\" untuk membuat permohonan."}
                     </div>
                   </td>
                 </tr>
               ) : (
-                filteredList.map((item) => (
+                paginated.map((item) => (
                   <tr key={item.id}>
-                    {/* Jenis Izin */}
                     <td>
                       {item.jenis === "Sakit" ? (
                         <span className="badge-status-red">Sakit</span>
-                      ) : (
+                      ) : item.jenis === "Izin" ? (
                         <span className="badge-status-blue">Izin</span>
+                      ) : (
+                        <span className="badge-status-amber">Lainnya</span>
                       )}
                     </td>
-
-                    {/* Rentang Waktu */}
                     <td>
                       <div style={{ fontWeight: "700", color: "#0f172a" }}>{item.rentang}</div>
-                      <div style={{ fontSize: "11px", color: "#64748b" }}>{item.subRentang}</div>
+                      <div style={{ fontSize: "11px", color: "#64748b" }}>Tercatat di database</div>
                     </td>
-
-                    {/* Alasan */}
                     <td>
                       <div style={{ fontWeight: "600", color: "#1e293b" }}>{item.alasan}</div>
-                      <div style={{ fontSize: "11px", color: "#64748b" }}>{item.subAlasan}</div>
+                      {isAdmin && <div style={{ fontSize: "11px", color: "#64748b" }}>NIM: {item.nim}</div>}
                     </td>
-
-                    {/* Dokumen Bukti */}
+                    {isAdmin && (
+                      <td style={{ fontSize: "12px", color: "#64748b" }}>{item.nim}</td>
+                    )}
                     <td>
-                      <div
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "6px",
-                          color: "#2349d4",
-                          fontSize: "12px",
-                          fontWeight: "600",
-                          cursor: "pointer"
-                        }}
-                        onClick={() => alert(`Membuka lampiran dokumen: ${item.dokumen}`)}
-                      >
-                        <FileText size={14} />
-                        <span style={{ textDecoration: "underline" }}>{item.dokumen}</span>
-                      </div>
-                    </td>
-
-                    {/* Status */}
-                    <td>
-                      {item.statusType === "amber" ? (
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", color: "#b45309", fontSize: "12px", fontWeight: "600" }}>
-                          <span style={{ width: "6px", height: "6px", borderRadius: "50%", backgroundColor: "#f59e0b" }} />
-                          Menunggu Persetujuan
-                        </span>
+                      {item.hasDokumen ? (
+                        <div
+                          style={{ display: "inline-flex", alignItems: "center", gap: "6px", color: "#2349d4", fontSize: "12px", fontWeight: "600", cursor: "pointer" }}
+                          onClick={() => alert(`Membuka lampiran: ${item.dokumen}`)}
+                        >
+                          <FileText size={14} />
+                          <span style={{ textDecoration: "underline" }}>{item.dokumen}</span>
+                        </div>
                       ) : (
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", color: "#15803d", fontSize: "12px", fontWeight: "600" }}>
-                          <span style={{ width: "6px", height: "6px", borderRadius: "50%", backgroundColor: "#10b981" }} />
-                          Selesai
-                        </span>
+                        <span style={{ fontSize: "12px", color: "#94a3b8" }}>Tidak ada lampiran</span>
                       )}
+                    </td>
+                    <td>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", color: "#15803d", fontSize: "12px", fontWeight: "600" }}>
+                        <span style={{ width: "6px", height: "6px", borderRadius: "50%", backgroundColor: "#10b981" }} />
+                        Tercatat
+                      </span>
                     </td>
                   </tr>
                 ))
@@ -510,23 +539,31 @@ export default function PengajuanIzinPage({ user }) {
           </table>
         </div>
 
-        {/* Table Footer: Pagination */}
+        {/* Table Footer */}
         <div className="table-pagination-row">
           <div style={{ fontSize: "12.5px", color: "#64748b" }}>
-            Menampilkan 4 dari 6 permohonan semester ini
+            Menampilkan {paginated.length} dari {filteredList.length} data perizinan
           </div>
-
           <div className="pagination-controls">
-            <button className="page-num-btn active">1</button>
-            <button className="page-num-btn">2</button>
-            <button className="page-num-btn" style={{ padding: "0 10px" }}>
-              Berikutnya &gt;
-            </button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+              <button
+                key={p}
+                className={`page-num-btn${p === currentPage ? " active" : ""}`}
+                onClick={() => setCurrentPage(p)}
+              >
+                {p}
+              </button>
+            ))}
+            {currentPage < totalPages && (
+              <button className="page-num-btn" style={{ padding: "0 10px" }} onClick={() => setCurrentPage((p) => p + 1)}>
+                Berikutnya &gt;
+              </button>
+            )}
           </div>
         </div>
       </div>
 
-      {/* 4. MODAL: Formulir Ajukan Izin Baru (Matches Screenshot 3 Right) */}
+      {/* 4. MODAL: Formulir Ajukan Izin Baru */}
       {showModal && (
         <div className="modal-backdrop-overlay" onClick={() => setShowModal(false)}>
           <div className="modal-dialog-box" onClick={(e) => e.stopPropagation()}>
@@ -584,7 +621,6 @@ export default function PengajuanIzinPage({ user }) {
                   Jenis Izin *
                 </label>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                  {/* Sakit Option */}
                   <div
                     onClick={() => setJenisIzin("sakit")}
                     style={{
@@ -595,8 +631,7 @@ export default function PengajuanIzinPage({ user }) {
                       cursor: "pointer",
                       display: "flex",
                       alignItems: "center",
-                      gap: "12px",
-                      transition: "all 0.15s ease"
+                      gap: "12px"
                     }}
                   >
                     <div
@@ -615,19 +650,11 @@ export default function PengajuanIzinPage({ user }) {
                       <HeartPulse size={18} />
                     </div>
                     <div>
-                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                        <span style={{ fontSize: "13.5px", fontWeight: "700", color: "#0f172a" }}>Sakit</span>
-                        <span style={{ fontSize: "9.5px", fontWeight: "700", color: "#ef4444", backgroundColor: "#fee2e2", padding: "1px 6px", borderRadius: "4px" }}>
-                          Medis
-                        </span>
-                      </div>
-                      <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
-                        Istirahat kamar / rawat medis
-                      </div>
+                      <div style={{ fontSize: "13.5px", fontWeight: "700", color: "#0f172a" }}>Sakit</div>
+                      <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>Istirahat kamar / rawat medis</div>
                     </div>
                   </div>
 
-                  {/* Izin Option */}
                   <div
                     onClick={() => setJenisIzin("izin")}
                     style={{
@@ -638,8 +665,7 @@ export default function PengajuanIzinPage({ user }) {
                       cursor: "pointer",
                       display: "flex",
                       alignItems: "center",
-                      gap: "12px",
-                      transition: "all 0.15s ease"
+                      gap: "12px"
                     }}
                   >
                     <div
@@ -658,21 +684,14 @@ export default function PengajuanIzinPage({ user }) {
                       <Briefcase size={18} />
                     </div>
                     <div>
-                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                        <span style={{ fontSize: "13.5px", fontWeight: "700", color: "#0f172a" }}>Izin</span>
-                        <span style={{ fontSize: "9.5px", fontWeight: "700", color: "#2349d4", backgroundColor: "#dbeafe", padding: "1px 6px", borderRadius: "4px" }}>
-                          Luar Asrama
-                        </span>
-                      </div>
-                      <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
-                        Keperluan luar / dispensasi
-                      </div>
+                      <div style={{ fontSize: "13.5px", fontWeight: "700", color: "#0f172a" }}>Izin</div>
+                      <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>Keperluan luar / dispensasi</div>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Tanggal Mulai & Tanggal Selesai */}
+              {/* Tanggal */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
                 <div>
                   <label style={{ display: "block", fontSize: "12px", fontWeight: "700", color: "#334155", marginBottom: "6px" }}>
@@ -723,7 +742,7 @@ export default function PengajuanIzinPage({ user }) {
                 </div>
               </div>
 
-              {/* Sesi Presensi yang Diizinkan */}
+              {/* Sesi Presensi */}
               <div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "6px" }}>
                   <label style={{ fontSize: "12px", fontWeight: "700", color: "#334155" }}>
@@ -733,88 +752,45 @@ export default function PengajuanIzinPage({ user }) {
                 </div>
 
                 <div style={{ display: "flex", gap: "10px" }}>
-                  <label
-                    style={{
-                      flex: 1,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      padding: "8px 12px",
-                      borderRadius: "10px",
-                      border: selectedSessions.subuh ? "1.5px solid #2349d4" : "1px solid #e2e8f0",
-                      backgroundColor: selectedSessions.subuh ? "#f0f6ff" : "#f8fafc",
-                      cursor: "pointer",
-                      fontSize: "12.5px",
-                      fontWeight: "600",
-                      color: selectedSessions.subuh ? "#2349d4" : "#334155"
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedSessions.subuh}
-                      onChange={() => handleToggleSession("subuh")}
-                      style={{ accentColor: "#2349d4" }}
-                    />
-                    Subuh
-                  </label>
-
-                  <label
-                    style={{
-                      flex: 1.3,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      padding: "8px 12px",
-                      borderRadius: "10px",
-                      border: selectedSessions.magrib ? "1.5px solid #2349d4" : "1px solid #e2e8f0",
-                      backgroundColor: selectedSessions.magrib ? "#f0f6ff" : "#f8fafc",
-                      cursor: "pointer",
-                      fontSize: "12.5px",
-                      fontWeight: "600",
-                      color: selectedSessions.magrib ? "#2349d4" : "#334155"
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedSessions.magrib}
-                      onChange={() => handleToggleSession("magrib")}
-                      style={{ accentColor: "#2349d4" }}
-                    />
-                    Magrib & Isya
-                  </label>
-
-                  <label
-                    style={{
-                      flex: 1.3,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      padding: "8px 12px",
-                      borderRadius: "10px",
-                      border: selectedSessions.penuh ? "1.5px solid #2349d4" : "1px solid #e2e8f0",
-                      backgroundColor: selectedSessions.penuh ? "#f0f6ff" : "#f8fafc",
-                      cursor: "pointer",
-                      fontSize: "12.5px",
-                      fontWeight: "600",
-                      color: selectedSessions.penuh ? "#2349d4" : "#334155"
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedSessions.penuh}
-                      onChange={() => handleToggleSession("penuh")}
-                      style={{ accentColor: "#2349d4" }}
-                    />
-                    Penuh / Bermalam
-                  </label>
+                  {[
+                    { key: "subuh", label: "Subuh" },
+                    { key: "magrib", label: "Magrib & Isya" },
+                    { key: "penuh", label: "Penuh / Bermalam" }
+                  ].map(({ key, label }) => (
+                    <label
+                      key={key}
+                      style={{
+                        flex: 1,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        padding: "8px 12px",
+                        borderRadius: "10px",
+                        border: selectedSessions[key] ? "1.5px solid #2349d4" : "1px solid #e2e8f0",
+                        backgroundColor: selectedSessions[key] ? "#f0f6ff" : "#f8fafc",
+                        cursor: "pointer",
+                        fontSize: "12.5px",
+                        fontWeight: "600",
+                        color: selectedSessions[key] ? "#2349d4" : "#334155"
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedSessions[key]}
+                        onChange={() => handleToggleSession(key)}
+                        style={{ accentColor: "#2349d4" }}
+                      />
+                      {label}
+                    </label>
+                  ))}
                 </div>
               </div>
 
-              {/* Alasan & Keterangan */}
+              {/* Alasan */}
               <div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "6px" }}>
                   <label style={{ fontSize: "12px", fontWeight: "700", color: "#334155" }}>
-                    Alasan & Keterangan *
+                    Alasan &amp; Keterangan *
                   </label>
                   <span style={{ fontSize: "10.5px", color: "#94a3b8" }}>
                     {reason.length} / 250 karakter
@@ -843,21 +819,20 @@ export default function PengajuanIzinPage({ user }) {
                 />
               </div>
 
-              {/* Unggah Dokumen Bukti */}
+              {/* Upload Dokumen */}
               <div>
                 <div style={{ fontSize: "12px", fontWeight: "700", color: "#334155", marginBottom: "2px" }}>
                   Unggah Dokumen Bukti
                 </div>
                 <div style={{ fontSize: "10.5px", color: "#64748b", marginBottom: "8px" }}>
-                  (Opsional untuk izin singkat / Wajib untuk sakit & bermalam - PDF, JPG (Maks 5MB))
+                  (Opsional untuk izin singkat — Wajib untuk sakit dan bermalam. PDF, JPG, maks 5MB)
                 </div>
 
-                {/* Dropzone */}
                 <div
                   onClick={() => {
                     setAttachedFile({
                       name: "Surat_Keterangan_Sakit.pdf",
-                      size: "1.4 MB • Terlampir"
+                      size: "1.4 MB"
                     });
                   }}
                   style={{
@@ -880,7 +855,6 @@ export default function PengajuanIzinPage({ user }) {
                   <span>Klik untuk telusuri berkas atau seret berkas bukti ke sini</span>
                 </div>
 
-                {/* File Preview Pill */}
                 {attachedFile && (
                   <div
                     style={{
@@ -918,16 +892,10 @@ export default function PengajuanIzinPage({ user }) {
                         </div>
                       </div>
                     </div>
-
                     <button
                       type="button"
                       onClick={() => setAttachedFile(null)}
-                      style={{
-                        border: "none",
-                        background: "none",
-                        color: "#94a3b8",
-                        cursor: "pointer"
-                      }}
+                      style={{ border: "none", background: "none", color: "#94a3b8", cursor: "pointer" }}
                     >
                       <Trash2 size={15} />
                     </button>
@@ -935,7 +903,7 @@ export default function PengajuanIzinPage({ user }) {
                 )}
               </div>
 
-              {/* Catatan SOP & Ketentuan Asrama Notice Box */}
+              {/* Info Box */}
               <div
                 style={{
                   backgroundColor: "#f0f7ff",
@@ -952,7 +920,7 @@ export default function PengajuanIzinPage({ user }) {
               >
                 <Info size={16} style={{ flexShrink: 0, marginTop: "2px" }} />
                 <div>
-                  <strong>Catatan SOP & Ketentuan Asrama:</strong> Pengajuan izin wajib diajukan maksimal 2 jam sebelum sesi presensi berlangsung. Surat izin memerlukan verifikasi fasil.
+                  <strong>Catatan SOP &amp; Ketentuan Asrama:</strong> Pengajuan izin wajib diajukan maksimal 2 jam sebelum sesi presensi berlangsung. Surat izin memerlukan verifikasi fasil.
                 </div>
               </div>
 
@@ -993,7 +961,6 @@ export default function PengajuanIzinPage({ user }) {
                   }}
                 >
                   <span>Kirim Pengajuan Izin</span>
-                  <span>&gt;</span>
                 </button>
               </div>
             </form>

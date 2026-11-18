@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Search,
   Plus,
@@ -9,6 +9,8 @@ import {
   ChevronDown
 } from "lucide-react";
 
+const API_BASE = "http://localhost:5250";
+
 export default function DataPenghuniPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [gedungFilter, setGedungFilter] = useState("Semua Gedung");
@@ -16,126 +18,110 @@ export default function DataPenghuniPage() {
   const [showModal, setShowModal] = useState(false);
   const [selectedPenghuni, setSelectedPenghuni] = useState(null);
 
-  const [penghuniList, setPenghuniList] = useState([
-    {
-      id: 1,
-      nama: "Akhmad Fauzan",
-      email: "penghuni01@asramaaman.id",
-      nim: "23115201",
-      jk: "L",
-      lokasi: "Gedung B / 1 / B-104",
-      status: "Aktif"
-    },
-    {
-      id: 2,
-      nama: "Alya Nur Rahmah",
-      email: "penghuni02@asramaaman.id",
-      nim: "23115202",
-      jk: "P",
-      lokasi: "Gedung A / 2 / A-201",
-      status: "Aktif"
-    },
-    {
-      id: 3,
-      nama: "Annisa Setiawan",
-      email: "penghuni03@asramaaman.id",
-      nim: "23115203",
-      jk: "L",
-      lokasi: "Gedung C / 1 / C-102",
-      status: "Aktif"
-    },
-    {
-      id: 4,
-      nama: "Anntoni Fitriani",
-      email: "penghuni04@asramaaman.id",
-      nim: "23115204",
-      jk: "P",
-      lokasi: "Gedung C / 2 / C-202",
-      status: "Aktif"
-    },
-    {
-      id: 5,
-      nama: "Arif Hidayat",
-      email: "penghuni05@asramaaman.id",
-      nim: "23115205",
-      jk: "L",
-      lokasi: "Gedung A / 1 / A-103",
-      status: "Aktif"
-    },
-    {
-      id: 6,
-      nama: "Asrul Maharani",
-      email: "penghuni06@asramaaman.id",
-      nim: "23115206",
-      jk: "P",
-      lokasi: "Gedung A / 1 / A-101",
-      status: "Nonaktif"
-    },
-    {
-      id: 7,
-      nama: "Bagas Wicaksana",
-      email: "penghuni07@asramaaman.id",
-      nim: "23115207",
-      jk: "L",
-      lokasi: "Gedung B / 1 / B-104",
-      status: "Aktif"
-    },
-    {
-      id: 8,
-      nama: "Bimo Arya",
-      email: "penghuni08@asramaaman.id",
-      nim: "23115208",
-      jk: "L",
-      lokasi: "Gedung B / 2 / B-201",
-      status: "Aktif"
-    }
-  ]);
+  const [penghuniList, setPenghuniList] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   // Form State
   const [formData, setFormData] = useState({
     nama: "",
     nim: "",
     asal: "",
-    jk: "L",
+    nomorKamar: "",
+    jenisKelamin: "L",
     email: "",
-    password: "",
-    gedung: "Gedung A",
-    lantai: "Lantai 1",
-    kamar: "A-101"
+    password: ""
   });
+  const [formLoading, setFormLoading] = useState(false);
+  const [formError, setFormError] = useState(null);
 
-  const handleSave = (e) => {
-    e.preventDefault();
-    const newEntry = {
-      id: Date.now(),
-      nama: formData.nama || "Penghuni Baru",
-      email: formData.email || `${formData.nim}@asramaaman.id`,
-      nim: formData.nim || "23115299",
-      jk: formData.jk,
-      lokasi: `${formData.gedung} / ${formData.lantai.replace("Lantai ", "")} / ${formData.kamar}`,
-      status: "Aktif"
-    };
-    setPenghuniList([newEntry, ...penghuniList]);
-    setShowModal(false);
-    setFormData({
-      nama: "",
-      nim: "",
-      asal: "",
-      jk: "L",
-      email: "",
-      password: "",
-      gedung: "Gedung A",
-      lantai: "Lantai 1",
-      kamar: "A-101"
-    });
-    alert("Data penghuni baru berhasil disimpan.");
+  // ── Fetch data from API ──────────────────────────────────────────────────
+  const fetchPenghuni = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/users/penghuni`);
+      if (!res.ok) throw new Error(`Server error: ${res.status} ${res.statusText}`);
+      const data = await res.json();
+      const mapped = data.map((u) => ({
+        id: u.idUser,
+        nama: u.nama,
+        email: u.email,
+        nim: u.nim,
+        jk: u.jenisKelamin === "Perempuan" ? "P" : u.jenisKelamin === "Laki-laki" ? "L" : (u.jenisKelamin || "-"),
+        lokasi: u.nomorKamar ? `Kamar ${u.nomorKamar}` : "-",
+        asal: u.asal || "-",
+        role: u.role,
+        status: "Aktif"
+      }));
+      setPenghuniList(mapped);
+    } catch (err) {
+      setError(err.message || "Gagal memuat data penghuni.");
+    } finally {
+      setLoading(false);
+    }
   };
 
+  useEffect(() => {
+    fetchPenghuni();
+  }, []);
+
+  // ── Tambah penghuni ──────────────────────────────────────────────────────
+  const handleSave = async (e) => {
+    e.preventDefault();
+    setFormLoading(true);
+    setFormError(null);
+    try {
+      const payload = {
+        nama: formData.nama,
+        nim: formData.nim,
+        asal: formData.asal,
+        nomorKamar: formData.nomorKamar || null,
+        jenisKelamin: formData.jenisKelamin === "L" ? "Laki-laki" : "Perempuan",
+        email: formData.email,
+        password: formData.password,
+        role: "penghuni"
+      };
+      const res = await fetch(`${API_BASE}/api/users`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || `Gagal menyimpan: ${res.status}`);
+      }
+      setShowModal(false);
+      setFormData({ nama: "", nim: "", asal: "", nomorKamar: "", jenisKelamin: "L", email: "", password: "" });
+      await fetchPenghuni();
+    } catch (err) {
+      setFormError(err.message || "Terjadi kesalahan saat menyimpan.");
+    } finally {
+      setFormLoading(false);
+    }
+  };
+
+  // ── Hapus penghuni ───────────────────────────────────────────────────────
+  const handleDelete = async (p) => {
+    if (!window.confirm(`Hapus penghuni "${p.nama}"? Tindakan ini tidak dapat dibatalkan.`)) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/users/${p.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || `Gagal menghapus: ${res.status}`);
+      }
+      await fetchPenghuni();
+    } catch (err) {
+      alert(`Error: ${err.message}`);
+    }
+  };
+
+  // ── Filter ───────────────────────────────────────────────────────────────
   const filteredList = penghuniList.filter((item) => {
     const matchSearch =
       item.nama.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.nim.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.email.toLowerCase().includes(searchQuery.toLowerCase());
+      (item.nim || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (item.email || "").toLowerCase().includes(searchQuery.toLowerCase());
     const matchGedung =
       gedungFilter === "Semua Gedung" || item.lokasi.includes(gedungFilter);
     const matchStatus =
@@ -272,97 +258,139 @@ export default function DataPenghuniPage() {
           </select>
         </div>
 
+        {/* Loading State */}
+        {loading && (
+          <div style={{ textAlign: "center", padding: "40px 0", color: "#64748b", fontSize: "13.5px" }}>
+            Memuat data penghuni...
+          </div>
+        )}
+
+        {/* Error State */}
+        {!loading && error && (
+          <div style={{
+            backgroundColor: "#fef2f2",
+            border: "1px solid #fecaca",
+            borderRadius: "10px",
+            padding: "14px 18px",
+            color: "#b91c1c",
+            fontSize: "13px",
+            display: "flex",
+            alignItems: "center",
+            gap: "10px"
+          }}>
+            <span style={{ fontWeight: "700" }}>⚠ Gagal memuat data:</span> {error}
+            <button
+              onClick={fetchPenghuni}
+              style={{ marginLeft: "auto", padding: "4px 12px", borderRadius: "6px", border: "1px solid #fca5a5", backgroundColor: "#fff", cursor: "pointer", fontSize: "12px", color: "#b91c1c", fontWeight: "600" }}
+            >
+              Coba lagi
+            </button>
+          </div>
+        )}
+
         {/* Data Table */}
-        <div className="data-table-container">
-          <table className="asrama-data-table">
-            <thead>
-              <tr>
-                <th>Nama</th>
-                <th>NIM</th>
-                <th>JK</th>
-                <th>Gedung / Lantai / Kamar</th>
-                <th>Status</th>
-                <th style={{ textAlign: "center" }}>Aksi</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredList.map((p) => (
-                <tr key={p.id}>
-                  <td>
-                    <div style={{ fontWeight: "700", color: "#0f172a" }}>{p.nama}</div>
-                    <div style={{ fontSize: "11px", color: "#64748b" }}>{p.email}</div>
-                  </td>
-                  <td>
-                    <span style={{ fontWeight: "600", color: "#334155" }}>{p.nim}</span>
-                  </td>
-                  <td>
-                    <span style={{ fontWeight: "600", color: "#64748b" }}>{p.jk}</span>
-                  </td>
-                  <td>
-                    <span style={{ color: "#334155" }}>{p.lokasi}</span>
-                  </td>
-                  <td>
-                    {p.status === "Aktif" ? (
-                      <span className="badge-status-green" style={{ fontSize: "11px", padding: "2px 10px" }}>
-                        ● Aktif
-                      </span>
-                    ) : (
-                      <span style={{ backgroundColor: "#f1f5f9", color: "#64748b", fontSize: "11px", fontWeight: "700", padding: "2px 10px", borderRadius: "9999px" }}>
-                        ● Nonaktif
-                      </span>
-                    )}
-                  </td>
-                  <td style={{ textAlign: "center" }}>
-                    <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                      <button
-                        onClick={() => setSelectedPenghuni(p)}
-                        style={{
-                          backgroundColor: "#f0f6ff",
-                          border: "1px solid #bfdbfe",
-                          color: "#2349d4",
-                          fontSize: "11px",
-                          fontWeight: "700",
-                          padding: "4px 10px",
-                          borderRadius: "6px",
-                          cursor: "pointer"
-                        }}
-                      >
-                        Lihat Detail
-                      </button>
-                      <button
-                        style={{ border: "none", background: "none", color: "#64748b", cursor: "pointer", padding: "4px" }}
-                        title="Edit"
-                        onClick={() => alert(`Edit penghuni: ${p.nama}`)}
-                      >
-                        <Edit2 size={14} />
-                      </button>
-                      <button
-                        style={{ border: "none", background: "none", color: "#ef4444", cursor: "pointer", padding: "4px" }}
-                        title="Hapus"
-                        onClick={() => setPenghuniList(penghuniList.filter((x) => x.id !== p.id))}
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </td>
+        {!loading && !error && (
+          <div className="data-table-container">
+            <table className="asrama-data-table">
+              <thead>
+                <tr>
+                  <th>Nama</th>
+                  <th>NIM</th>
+                  <th>JK</th>
+                  <th>Kamar</th>
+                  <th>Status</th>
+                  <th style={{ textAlign: "center" }}>Aksi</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {filteredList.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} style={{ textAlign: "center", padding: "32px", color: "#94a3b8", fontSize: "13px" }}>
+                      {penghuniList.length === 0 ? "Belum ada data penghuni." : "Tidak ada data yang sesuai filter."}
+                    </td>
+                  </tr>
+                ) : (
+                  filteredList.map((p) => (
+                    <tr key={p.id}>
+                      <td>
+                        <div style={{ fontWeight: "700", color: "#0f172a" }}>{p.nama}</div>
+                        <div style={{ fontSize: "11px", color: "#64748b" }}>{p.email}</div>
+                      </td>
+                      <td>
+                        <span style={{ fontWeight: "600", color: "#334155" }}>{p.nim || "-"}</span>
+                      </td>
+                      <td>
+                        <span style={{ fontWeight: "600", color: "#64748b" }}>{p.jk}</span>
+                      </td>
+                      <td>
+                        <span style={{ color: "#334155" }}>{p.lokasi}</span>
+                      </td>
+                      <td>
+                        {p.status === "Aktif" ? (
+                          <span className="badge-status-green" style={{ fontSize: "11px", padding: "2px 10px" }}>
+                            ● Aktif
+                          </span>
+                        ) : (
+                          <span style={{ backgroundColor: "#f1f5f9", color: "#64748b", fontSize: "11px", fontWeight: "700", padding: "2px 10px", borderRadius: "9999px" }}>
+                            ● Nonaktif
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ textAlign: "center" }}>
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                          <button
+                            onClick={() => setSelectedPenghuni(p)}
+                            style={{
+                              backgroundColor: "#f0f6ff",
+                              border: "1px solid #bfdbfe",
+                              color: "#2349d4",
+                              fontSize: "11px",
+                              fontWeight: "700",
+                              padding: "4px 10px",
+                              borderRadius: "6px",
+                              cursor: "pointer"
+                            }}
+                          >
+                            Lihat Detail
+                          </button>
+                          <button
+                            style={{ border: "none", background: "none", color: "#64748b", cursor: "pointer", padding: "4px" }}
+                            title="Edit"
+                            onClick={() => alert(`Edit penghuni: ${p.nama}`)}
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                          <button
+                            style={{ border: "none", background: "none", color: "#ef4444", cursor: "pointer", padding: "4px" }}
+                            title="Hapus"
+                            onClick={() => handleDelete(p)}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         {/* Footer */}
-        <div className="table-pagination-row">
-          <div style={{ fontSize: "12.5px", color: "#64748b" }}>
-            {filteredList.length} data · Halaman 1 dari 1
+        {!loading && !error && (
+          <div className="table-pagination-row">
+            <div style={{ fontSize: "12.5px", color: "#64748b" }}>
+              {filteredList.length} data · Halaman 1 dari 1
+            </div>
+            <div className="pagination-controls">
+              <button className="page-num-btn active">1</button>
+            </div>
           </div>
-          <div className="pagination-controls">
-            <button className="page-num-btn active">1</button>
-          </div>
-        </div>
+        )}
       </div>
 
-      {/* 3. MODAL: Tambah Penghuni (Screenshot 4 Left) */}
+      {/* 3. MODAL: Tambah Penghuni */}
       {showModal && (
         <div className="modal-backdrop-overlay" onClick={() => setShowModal(false)}>
           <div className="modal-dialog-box" style={{ maxWidth: "560px" }} onClick={(e) => e.stopPropagation()}>
@@ -382,6 +410,12 @@ export default function DataPenghuniPage() {
                 <X size={16} color="#64748b" />
               </button>
             </div>
+
+            {formError && (
+              <div style={{ backgroundColor: "#fef2f2", border: "1px solid #fecaca", borderRadius: "8px", padding: "10px 14px", color: "#b91c1c", fontSize: "12.5px", marginBottom: "12px" }}>
+                ⚠ {formError}
+              </div>
+            )}
 
             <form onSubmit={handleSave} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
@@ -428,20 +462,32 @@ export default function DataPenghuniPage() {
                 </div>
                 <div>
                   <label style={{ display: "block", fontSize: "11.5px", fontWeight: "700", color: "#334155", marginBottom: "3px" }}>
+                    Nomor Kamar
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.nomorKamar}
+                    onChange={(e) => setFormData({ ...formData, nomorKamar: e.target.value })}
+                    placeholder="Contoh: A-101"
+                    style={{ width: "100%", height: "36px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12px", boxSizing: "border-box" }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "11.5px", fontWeight: "700", color: "#334155", marginBottom: "3px" }}>
                     Jenis Kelamin *
                   </label>
                   <select
-                    value={formData.jk}
-                    onChange={(e) => setFormData({ ...formData, jk: e.target.value })}
+                    value={formData.jenisKelamin}
+                    onChange={(e) => setFormData({ ...formData, jenisKelamin: e.target.value })}
                     style={{ width: "100%", height: "36px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12px" }}
                   >
                     <option value="L">Laki-laki (L)</option>
                     <option value="P">Perempuan (P)</option>
                   </select>
                 </div>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
                 <div>
                   <label style={{ display: "block", fontSize: "11.5px", fontWeight: "700", color: "#334155", marginBottom: "3px" }}>
                     Email *
@@ -455,63 +501,20 @@ export default function DataPenghuniPage() {
                     style={{ width: "100%", height: "36px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12px", boxSizing: "border-box" }}
                   />
                 </div>
-                <div>
-                  <label style={{ display: "block", fontSize: "11.5px", fontWeight: "700", color: "#334155", marginBottom: "3px" }}>
-                    Password *
-                  </label>
-                  <input
-                    type="password"
-                    required
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    placeholder="Min. 6 karakter"
-                    style={{ width: "100%", height: "36px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12px", boxSizing: "border-box" }}
-                  />
-                </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px" }}>
-                <div>
-                  <label style={{ display: "block", fontSize: "11.5px", fontWeight: "700", color: "#334155", marginBottom: "3px" }}>
-                    Gedung *
-                  </label>
-                  <select
-                    value={formData.gedung}
-                    onChange={(e) => setFormData({ ...formData, gedung: e.target.value })}
-                    style={{ width: "100%", height: "36px", padding: "0 8px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12px" }}
-                  >
-                    <option value="Gedung A">Gedung A</option>
-                    <option value="Gedung B">Gedung B</option>
-                    <option value="Gedung C">Gedung C</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{ display: "block", fontSize: "11.5px", fontWeight: "700", color: "#334155", marginBottom: "3px" }}>
-                    Lantai *
-                  </label>
-                  <select
-                    value={formData.lantai}
-                    onChange={(e) => setFormData({ ...formData, lantai: e.target.value })}
-                    style={{ width: "100%", height: "36px", padding: "0 8px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12px" }}
-                  >
-                    <option value="Lantai 1">Lantai 1</option>
-                    <option value="Lantai 2">Lantai 2</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{ display: "block", fontSize: "11.5px", fontWeight: "700", color: "#334155", marginBottom: "3px" }}>
-                    Kamar *
-                  </label>
-                  <select
-                    value={formData.kamar}
-                    onChange={(e) => setFormData({ ...formData, kamar: e.target.value })}
-                    style={{ width: "100%", height: "36px", padding: "0 8px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12px" }}
-                  >
-                    <option value="A-101">A-101</option>
-                    <option value="A-102">A-102</option>
-                    <option value="B-104">B-104</option>
-                  </select>
-                </div>
+              <div>
+                <label style={{ display: "block", fontSize: "11.5px", fontWeight: "700", color: "#334155", marginBottom: "3px" }}>
+                  Password *
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  placeholder="Min. 6 karakter"
+                  style={{ width: "100%", height: "36px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12px", boxSizing: "border-box" }}
+                />
               </div>
 
               <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "12px" }}>
@@ -524,9 +527,10 @@ export default function DataPenghuniPage() {
                 </button>
                 <button
                   type="submit"
-                  style={{ padding: "8px 20px", borderRadius: "8px", border: "none", backgroundColor: "#2349d4", color: "#ffffff", cursor: "pointer", fontSize: "12.5px", fontWeight: "700" }}
+                  disabled={formLoading}
+                  style={{ padding: "8px 20px", borderRadius: "8px", border: "none", backgroundColor: formLoading ? "#93aef0" : "#2349d4", color: "#ffffff", cursor: formLoading ? "not-allowed" : "pointer", fontSize: "12.5px", fontWeight: "700" }}
                 >
-                  Simpan
+                  {formLoading ? "Menyimpan..." : "Simpan"}
                 </button>
               </div>
             </form>
@@ -546,10 +550,13 @@ export default function DataPenghuniPage() {
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: "10px", fontSize: "13px" }}>
               <div><strong>Nama:</strong> {selectedPenghuni.nama}</div>
-              <div><strong>NIM:</strong> {selectedPenghuni.nim}</div>
+              <div><strong>NIM:</strong> {selectedPenghuni.nim || "-"}</div>
               <div><strong>Email:</strong> {selectedPenghuni.email}</div>
+              <div><strong>Jenis Kelamin:</strong> {selectedPenghuni.jk}</div>
+              <div><strong>Asal:</strong> {selectedPenghuni.asal}</div>
               <div><strong>Lokasi:</strong> {selectedPenghuni.lokasi}</div>
               <div><strong>Status:</strong> {selectedPenghuni.status}</div>
+              <div><strong>Role:</strong> {selectedPenghuni.role}</div>
             </div>
           </div>
         </div>

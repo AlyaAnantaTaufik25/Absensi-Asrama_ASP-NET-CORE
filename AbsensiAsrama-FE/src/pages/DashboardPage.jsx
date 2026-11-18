@@ -11,10 +11,51 @@ import {
 } from "lucide-react";
 import { getPresensi, getPerizinan } from "../services/api";
 
+const API_BASE = "http://localhost:5250";
+
 export default function DashboardPage({ user, setActiveTab }) {
   const [presensiList, setPresensiList] = useState([]);
   const [izinList, setIzinList] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [gpsCoords, setGpsCoords] = useState(null);
+  const [gpsDistance, setGpsDistance] = useState(null);
+
+  const ASRAMA_LAT = -0.9145;
+  const ASRAMA_LNG = 100.4172;
+
+  const calcDistance = (lat1, lng1, lat2, lng2) => {
+    const R = 6371000;
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLng = ((lng2 - lng1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLng / 2) *
+        Math.sin(dLng / 2);
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  };
+
+  // GPS
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const { latitude, longitude } = pos.coords;
+          setGpsCoords({ lat: latitude, lng: longitude });
+          setGpsDistance(Math.round(calcDistance(latitude, longitude, ASRAMA_LAT, ASRAMA_LNG)));
+        },
+        () => {
+          setGpsCoords({ lat: ASRAMA_LAT, lng: ASRAMA_LNG });
+          setGpsDistance(12);
+        },
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    } else {
+      setGpsCoords({ lat: ASRAMA_LAT, lng: ASRAMA_LNG });
+      setGpsDistance(12);
+    }
+  }, []);
 
   useEffect(() => {
     async function loadData() {
@@ -47,11 +88,6 @@ export default function DashboardPage({ user, setActiveTab }) {
   const totalAlpha = presensiList.filter((p) => p.status?.toLowerCase() === "alpha").length;
   const totalSesi = totalHadir + totalIzin + totalAlpha;
   const percentage = totalSesi > 0 ? ((totalHadir / totalSesi) * 100).toFixed(1) + " %" : "0 %";
-
-  // If there is no data in DB, render nothing
-  if (!isLoading && presensiList.length === 0 && izinList.length === 0) {
-    return null;
-  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
@@ -200,7 +236,11 @@ export default function DashboardPage({ user, setActiveTab }) {
           {/* Bottom: Location */}
           <div style={{ position: "relative", zIndex: 1, marginTop: "16px", display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", opacity: 0.85 }}>
             <MapPin size={13} />
-            <span>14 m dari titik pusat Asrama Hijau</span>
+            <span>
+              {gpsDistance !== null
+                ? `${gpsDistance} m dari titik pusat asrama`
+                : "Mendeteksi lokasi GPS..."}
+            </span>
           </div>
         </div>
 

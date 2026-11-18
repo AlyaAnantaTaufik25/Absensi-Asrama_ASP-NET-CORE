@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Download,
   Calendar,
@@ -14,205 +14,86 @@ import {
   UserCheck
 } from "lucide-react";
 
+const API_BASE = "http://localhost:5250";
+
 export default function RekapKehadiranPage() {
-  const [filterSession, setFilterSession] = useState("semua"); // "semua" | "subuh" | "maghrib"
-  const [filterPeriod, setFilterPeriod] = useState("hari-ini"); // "hari-ini" | "minggu-ini" | "bulan-ini"
+  const [filterSession, setFilterSession] = useState("semua");
+  const [filterPeriod, setFilterPeriod] = useState("hari-ini");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [downloadSuccess, setDownloadSuccess] = useState(false);
 
-  const studentsAttendance = [
-    {
-      room: "B-301",
-      name: "Fikri Ramadhan",
-      nim: "2311521001",
-      subuh: "Hadir",
-      subuhTime: "04:45 WIB",
-      maghrib: "Hadir",
-      maghribTime: "18:07 WIB",
-      complianceRate: 100,
-      totalPresent: 28,
-      totalPermit: 0,
-      totalAlpha: 0,
-      statusNote: "Tepat Waktu"
-    },
-    {
-      room: "B-302",
-      name: "Yoga Prasetyo",
-      nim: "2311521002",
-      subuh: "Hadir",
-      subuhTime: "04:48 WIB",
-      maghrib: "Hadir",
-      maghribTime: "18:12 WIB",
-      complianceRate: 96,
-      totalPresent: 27,
-      totalPermit: 1,
-      totalAlpha: 0,
-      statusNote: "Tepat Waktu"
-    },
-    {
-      room: "B-303",
-      name: "Taufik Hidayat",
-      nim: "2311521003",
-      subuh: "Hadir",
-      subuhTime: "04:52 WIB",
-      maghrib: "Hadir",
-      maghribTime: "18:09 WIB",
-      complianceRate: 93,
-      totalPresent: 26,
-      totalPermit: 2,
-      totalAlpha: 0,
-      statusNote: "Izin Keluar Malam"
-    },
-    {
-      room: "B-304",
-      name: "Rayhan Pratama",
-      nim: "2311521004",
-      subuh: "Hadir",
-      subuhTime: "04:42 WIB",
-      maghrib: "Hadir",
-      maghribTime: "18:04 WIB",
-      complianceRate: 100,
-      totalPresent: 28,
-      totalPermit: 0,
-      totalAlpha: 0,
-      statusNote: "Tepat Waktu"
-    },
-    {
-      room: "B-305",
-      name: "Alvin Syahputra",
-      nim: "2311521005",
-      subuh: "Hadir",
-      subuhTime: "04:50 WIB",
-      maghrib: "Hadir",
-      maghribTime: "18:15 WIB",
-      complianceRate: 89,
-      totalPresent: 25,
-      totalPermit: 2,
-      totalAlpha: 1,
-      statusNote: "Kegiatan UKM"
-    },
-    {
-      room: "B-306",
-      name: "Rendy Kusuma",
-      nim: "2311521006",
-      subuh: "Hadir",
-      subuhTime: "04:47 WIB",
-      maghrib: "Hadir",
-      maghribTime: "18:21 WIB",
-      complianceRate: 96,
-      totalPresent: 27,
-      totalPermit: 1,
-      totalAlpha: 0,
-      statusNote: "Tepat Waktu"
-    },
-    {
-      room: "B-307",
-      name: "Irfan Maulana",
-      nim: "2311521007",
-      subuh: "Hadir",
-      subuhTime: "04:51 WIB",
-      maghrib: "Izin",
-      maghribTime: "Izin Sakit",
-      complianceRate: 86,
-      totalPresent: 24,
-      totalPermit: 4,
-      totalAlpha: 0,
-      statusNote: "Izin Sakit di Kamar"
-    },
-    {
-      room: "B-308",
-      name: "Dimas Aditya",
-      nim: "2311521008",
-      subuh: "Hadir",
-      subuhTime: "04:44 WIB",
-      maghrib: "Hadir",
-      maghribTime: "18:10 WIB",
-      complianceRate: 100,
-      totalPresent: 28,
-      totalPermit: 0,
-      totalAlpha: 0,
-      statusNote: "Tepat Waktu"
-    },
-    {
-      room: "B-309",
-      name: "Gilang Permana",
-      nim: "2311521009",
-      subuh: "Hadir",
-      subuhTime: "04:49 WIB",
-      maghrib: "Hadir",
-      maghribTime: "18:18 WIB",
-      complianceRate: 93,
-      totalPresent: 26,
-      totalPermit: 2,
-      totalAlpha: 0,
-      statusNote: "Izin Beli Obat"
-    },
-    {
-      room: "B-310",
-      name: "Hasan Basri",
-      nim: "2311521010",
-      subuh: "Hadir",
-      subuhTime: "04:40 WIB",
-      maghrib: "Hadir",
-      maghribTime: "18:03 WIB",
-      complianceRate: 100,
-      totalPresent: 28,
-      totalPermit: 0,
-      totalAlpha: 0,
-      statusNote: "Tepat Waktu"
-    },
-    {
-      room: "B-311",
-      name: "Farid Ramli",
-      nim: "2311521011",
-      subuh: "Hadir",
-      subuhTime: "04:54 WIB",
-      maghrib: "Hadir",
-      maghribTime: "18:25 WIB",
-      complianceRate: 93,
-      totalPresent: 26,
-      totalPermit: 2,
-      totalAlpha: 0,
-      statusNote: "Izin Rapat Panitia"
-    },
-    {
-      room: "B-312",
-      name: "Wahyu Setiawan",
-      nim: "2311521012",
-      subuh: "Hadir",
-      subuhTime: "04:55 WIB",
-      maghrib: "Belum",
-      maghribTime: "Belum Tercatat",
-      complianceRate: 82,
-      totalPresent: 23,
-      totalPermit: 2,
-      totalAlpha: 3,
-      statusNote: "Perlu Verifikasi"
-    }
-  ];
+  const [studentsAttendance, setStudentsAttendance] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    const today = new Date().toISOString().split("T")[0];
+
+    Promise.all([
+      fetch(`${API_BASE}/api/users/penghuni`).then(r => r.ok ? r.json() : []),
+      fetch(`${API_BASE}/api/presensi`).then(r => r.ok ? r.json() : [])
+    ]).then(([users, presensi]) => {
+      if (!Array.isArray(users)) { setLoading(false); return; }
+      const presArr = Array.isArray(presensi) ? presensi : [];
+      const todayPres = presArr.filter(p => {
+        const tgl = p.tanggal || p.Tanggal || "";
+        return String(tgl).startsWith(today);
+      });
+
+      const mapped = users.map(u => {
+        const pData = todayPres.filter(p => p.idUser === u.idUser);
+        const subuhRec = pData.find(p => {
+          const h = p.waktu ? new Date(p.waktu).getHours() : -1;
+          return h >= 3 && h <= 7;
+        });
+        const maghribRec = pData.find(p => {
+          const h = p.waktu ? new Date(p.waktu).getHours() : -1;
+          return h >= 17 && h <= 22;
+        });
+
+        const subuhStatus = subuhRec ? (subuhRec.status || "Hadir") : "Belum";
+        const maghribStatus = maghribRec ? (maghribRec.status || "Hadir") : "Belum";
+        const subuhTime = subuhRec?.waktu
+          ? new Date(subuhRec.waktu).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) + " WIB"
+          : "-";
+        const maghribTime = maghribRec?.waktu
+          ? new Date(maghribRec.waktu).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) + " WIB"
+          : "-";
+        const hadirCount = pData.filter(p => (p.status || "").toLowerCase() === "hadir").length;
+
+        return {
+          room: u.nomorKamar || "-",
+          name: u.nama,
+          nim: u.nim || "-",
+          subuh: subuhStatus,
+          subuhTime,
+          maghrib: maghribStatus,
+          maghribTime,
+          complianceRate: pData.length > 0 ? Math.round((hadirCount / pData.length) * 100) : 0,
+          totalPresent: hadirCount,
+          totalPermit: 0,
+          totalAlpha: pData.length - hadirCount,
+          statusNote: pData.length === 0 ? "Belum Presensi Hari Ini" : "Tercatat"
+        };
+      });
+      setStudentsAttendance(mapped);
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, []);
 
   const handleExport = () => {
     setDownloadSuccess(true);
-    setTimeout(() => {
-      setDownloadSuccess(false);
-    }, 3500);
+    setTimeout(() => { setDownloadSuccess(false); }, 3500);
   };
 
   const filteredData = studentsAttendance.filter((s) => {
     const matchesSearch =
       s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.room.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.nim.includes(searchQuery);
-
+      (s.room || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (s.nim || "").includes(searchQuery);
     if (!matchesSearch) return false;
-
-    if (filterSession === "subuh") {
-      return s.subuh === "Hadir";
-    } else if (filterSession === "maghrib") {
-      return s.maghrib === "Hadir";
-    }
-
+    if (filterSession === "subuh") return s.subuh === "Hadir";
+    else if (filterSession === "maghrib") return s.maghrib === "Hadir";
     return true;
   });
 
@@ -297,9 +178,10 @@ export default function RekapKehadiranPage() {
             Tingkat Kepatuhan
           </div>
           <div style={{ display: "flex", alignItems: "baseline", gap: "6px" }}>
-            <span style={{ fontSize: "28px", fontWeight: "800", color: "#15803d" }}>91.7%</span>
-            <span style={{ fontSize: "11px", color: "#15803d", backgroundColor: "#dcfce7", padding: "2px 6px", borderRadius: "4px", fontWeight: "700" }}>
-              +2.4%
+            <span style={{ fontSize: "28px", fontWeight: "800", color: "#15803d" }}>
+              {studentsAttendance.length > 0
+                ? Math.round(studentsAttendance.reduce((s, x) => s + x.complianceRate, 0) / studentsAttendance.length) + "%"
+                : loading ? "..." : "0%"}
             </span>
           </div>
         </div>
@@ -310,8 +192,10 @@ export default function RekapKehadiranPage() {
             Total Hadir Hari Ini
           </div>
           <div style={{ display: "flex", alignItems: "baseline", gap: "4px" }}>
-            <span style={{ fontSize: "28px", fontWeight: "800", color: "#2563eb" }}>22</span>
-            <span style={{ fontSize: "14px", color: "#94a3b8", fontWeight: "600" }}>/24 sesi</span>
+            <span style={{ fontSize: "28px", fontWeight: "800", color: "#2563eb" }}>
+              {studentsAttendance.reduce((s, x) => s + x.totalPresent, 0)}
+            </span>
+            <span style={{ fontSize: "14px", color: "#94a3b8", fontWeight: "600" }}>sesi</span>
           </div>
         </div>
 
@@ -321,7 +205,8 @@ export default function RekapKehadiranPage() {
             Izin Tercatat
           </div>
           <div style={{ fontSize: "28px", fontWeight: "800", color: "#0284c7" }}>
-            1 <span style={{ fontSize: "14px", color: "#94a3b8", fontWeight: "600" }}>sesi</span>
+            {studentsAttendance.reduce((s, x) => s + x.totalPermit, 0)}{" "}
+            <span style={{ fontSize: "14px", color: "#94a3b8", fontWeight: "600" }}>sesi</span>
           </div>
         </div>
 
@@ -331,7 +216,8 @@ export default function RekapKehadiranPage() {
             Belum / Alpha
           </div>
           <div style={{ fontSize: "28px", fontWeight: "800", color: "#ea580c" }}>
-            1 <span style={{ fontSize: "14px", color: "#94a3b8", fontWeight: "600" }}>sesi</span>
+            {studentsAttendance.reduce((s, x) => s + x.totalAlpha, 0)}{" "}
+            <span style={{ fontSize: "14px", color: "#94a3b8", fontWeight: "600" }}>sesi</span>
           </div>
         </div>
       </div>
@@ -460,7 +346,20 @@ export default function RekapKehadiranPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredData.map((row, index) => {
+              {loading ? (
+                <tr>
+                  <td colSpan={7} style={{ textAlign: "center", padding: "48px", color: "#64748b", fontSize: "13px" }}>
+                    Memuat data kehadiran dari database...
+                  </td>
+                </tr>
+              ) : filteredData.length === 0 ? (
+                <tr>
+                  <td colSpan={7} style={{ textAlign: "center", padding: "48px", color: "#94a3b8", fontSize: "13px" }}>
+                    {studentsAttendance.length === 0 ? "Belum ada data penghuni terdaftar." : "Tidak ada data yang sesuai filter."}
+                  </td>
+                </tr>
+              ) : (
+              filteredData.map((row, index) => {
                 const subuhOk = row.subuh === "Hadir";
                 const maghribOk = row.maghrib === "Hadir";
                 const maghribIzin = row.maghrib === "Izin";
@@ -582,7 +481,8 @@ export default function RekapKehadiranPage() {
                     </td>
                   </tr>
                 );
-              })}
+              })
+              )}
             </tbody>
           </table>
         </div>

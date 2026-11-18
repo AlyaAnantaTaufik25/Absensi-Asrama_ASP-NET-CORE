@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Users,
   UserCheck,
@@ -11,47 +11,121 @@ import {
 
 export default function AdminDashboardPage({ setActiveTab }) {
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [stats, setStats] = useState({
+    penghuni: "-",
+    fasil: "-",
+    gedung: "-",
+    kamar: "-",
+    kehadiran: "-"
+  });
+
+  const BASE_URL = "http://localhost:5250";
+
+  const fetchStats = async () => {
+    try {
+      // Fetch users → hitung penghuni dan fasil
+      const usersRes = await fetch(`${BASE_URL}/api/users`);
+      if (usersRes.ok) {
+        const users = await usersRes.json();
+        const penghuniCount = users.filter(
+          (u) => u.role === "penghuni" || u.role === "mahasiswa"
+        ).length;
+        const fasilCount = users.filter((u) => u.role === "fasil").length;
+        setStats((prev) => ({
+          ...prev,
+          penghuni: penghuniCount,
+          fasil: fasilCount
+        }));
+      }
+    } catch (_) {}
+
+    try {
+      // Fetch gedung
+      const gedungRes = await fetch(`${BASE_URL}/api/gedung`);
+      if (gedungRes.ok) {
+        const gedung = await gedungRes.json();
+        setStats((prev) => ({ ...prev, gedung: gedung.length }));
+      }
+    } catch (_) {}
+
+    try {
+      // Fetch kamar
+      const kamarRes = await fetch(`${BASE_URL}/api/kamar`);
+      if (kamarRes.ok) {
+        const kamar = await kamarRes.json();
+        setStats((prev) => ({ ...prev, kamar: kamar.length }));
+      }
+    } catch (_) {}
+
+    try {
+      // Fetch presensi → hitung % hadir hari ini
+      const presensiRes = await fetch(`${BASE_URL}/api/presensi`);
+      if (presensiRes.ok) {
+        const presensi = await presensiRes.json();
+        const today = new Date().toISOString().split("T")[0];
+        const todayRecords = presensi.filter((p) => {
+          const tgl =
+            p.tanggal || p.Tanggal || p.date || p.Date || "";
+          return tgl.startsWith(today);
+        });
+        if (todayRecords.length > 0) {
+          const hadirCount = todayRecords.filter(
+            (p) =>
+              (p.status || p.Status || "").toLowerCase() === "hadir"
+          ).length;
+          const pct = Math.round((hadirCount / todayRecords.length) * 100);
+          setStats((prev) => ({ ...prev, kehadiran: `${pct}%` }));
+        } else {
+          setStats((prev) => ({ ...prev, kehadiran: "0%" }));
+        }
+      }
+    } catch (_) {}
+  };
+
+  useEffect(() => {
+    fetchStats();
+  }, []);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
-    setTimeout(() => {
-      setIsRefreshing(false);
-    }, 600);
+    fetchStats().finally(() => {
+      setTimeout(() => setIsRefreshing(false), 400);
+    });
   };
 
   const statCards = [
     {
       id: "penghuni",
       label: "Penghuni Aktif",
-      value: "37",
+      value: stats.penghuni,
       icon: Users,
       tab: "data-penghuni"
     },
     {
       id: "fasil",
       label: "Fasil Aktif",
-      value: "10",
+      value: stats.fasil,
       icon: UserCheck,
       tab: "data-fasil"
     },
     {
       id: "gedung",
       label: "Gedung",
-      value: "10",
+      value: stats.gedung,
       icon: Building2,
       tab: "master-data"
     },
     {
       id: "kamar",
       label: "Kamar",
-      value: "136",
+      value: stats.kamar,
       icon: DoorClosed,
       tab: "master-data"
     },
     {
       id: "kehadiran",
       label: "Kehadiran Hari Ini",
-      value: "68%",
+      value: stats.kehadiran,
       icon: Percent,
       tab: "rekapitulasi"
     }

@@ -1,56 +1,38 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Check, X, Clock, AlertCircle } from "lucide-react";
+
+const API_BASE = "http://localhost:5250";
 
 export default function IzinDaruratPage({ onCountChange }) {
   const [filterTab, setFilterTab] = useState("menunggu"); // "menunggu" | "selesai"
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const [requests, setRequests] = useState([
-    {
-      id: "ID-01",
-      name: "Taufik Hidayat",
-      room: "Kamar B-303",
-      timeSubmitted: "20:48",
-      purpose: "Mengantar teman ke IGD",
-      destination: "RS Kota",
-      estimatedReturn: "23:00 WIB",
-      status: "menunggu", // "menunggu" | "disetujui" | "ditolak"
-      statusLabel: "Menunggu"
-    },
-    {
-      id: "ID-02",
-      name: "Gilang Permana",
-      room: "Kamar B-309",
-      timeSubmitted: "20:55",
-      purpose: "Membeli obat",
-      destination: "Apotek 24 jam",
-      estimatedReturn: "21:45 WIB",
-      status: "menunggu",
-      statusLabel: "Menunggu"
-    },
-    {
-      id: "ID-03",
-      name: "Farid Ramli",
-      room: "Kamar B-311",
-      timeSubmitted: "19:40",
-      purpose: "Rapat panitia darurat",
-      destination: "Gedung PKM",
-      estimatedReturn: "23:45 WIB",
-      status: "disetujui",
-      statusLabel: "Disetujui"
-    },
-    {
-      id: "ID-04",
-      name: "Rendy Kusuma",
-      room: "Kamar B-306",
-      timeSubmitted: "19:15",
-      purpose: "Nongkrong di kafe",
-      destination: "Kopi Kenangan",
-      estimatedReturn: "23:00 WIB",
-      status: "ditolak",
-      statusLabel: "Ditolak",
-      rejectReason: "Bukan keperluan darurat/medis."
-    }
-  ]);
+  useEffect(() => {
+    setLoading(true);
+    fetch(`${API_BASE}/api/perizinan`)
+      .then(r => r.ok ? r.json() : [])
+      .then(data => {
+        if (Array.isArray(data)) {
+          const mapped = data.map(p => ({
+            id: p.idIzin || p.id,
+            name: p.nim || "-",
+            room: "-",
+            timeSubmitted: p.tanggal ? new Date(p.tanggal).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : "-",
+            purpose: p.alasan || "-",
+            destination: "-",
+            estimatedReturn: "-",
+            status: "menunggu",
+            statusLabel: "Menunggu",
+            fileBukti: p.fileBukti || null
+          }));
+          setRequests(mapped);
+          if (onCountChange) onCountChange(mapped.filter(r => r.status === "menunggu").length);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
 
   const handleAction = (id, newStatus) => {
     setRequests((prev) =>
