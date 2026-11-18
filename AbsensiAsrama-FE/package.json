@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && powershell -Command \"Copy-Item -Path ../AbsensiAsrama/wwwroot/* -Destination ../AbsensiAsrama-BE/wwwroot -Recurse -Force\"",
     "lint": "eslint .",
     "preview": "vite preview"
   },

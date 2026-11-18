@@ -96,57 +96,99 @@ export function calculateDistanceMeters(lat1, lon1, lat2, lon2) {
   return Math.round(R * c);
 }
 
+export const DEFAULT_SESSION_HOURS = {
+  subuhStart: "04:00",
+  subuhEnd: "06:00",
+  malamStart: "18:00",
+  malamEnd: "20:30"
+};
+
+export function timeToMinutes(timeStr) {
+  if (!timeStr) return 0;
+  const parts = timeStr.split(":");
+  const h = parseInt(parts[0], 10) || 0;
+  const m = parseInt(parts[1], 10) || 0;
+  return h * 60 + m;
+}
+
+export function getActiveSessionConfig() {
+  if (typeof window !== "undefined") {
+    try {
+      const cached = localStorage.getItem("mynava_session_settings");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        return {
+          subuhStart: parsed.subuhStart || DEFAULT_SESSION_HOURS.subuhStart,
+          subuhEnd: parsed.subuhEnd || DEFAULT_SESSION_HOURS.subuhEnd,
+          malamStart: parsed.malamStart || DEFAULT_SESSION_HOURS.malamStart,
+          malamEnd: parsed.malamEnd || DEFAULT_SESSION_HOURS.malamEnd
+        };
+      }
+    } catch {}
+  }
+  return DEFAULT_SESSION_HOURS;
+}
+
 /**
  * Mengecek apakah waktu saat ini berada di dalam sesi presensi:
- * - Sesi Subuh: 04.00 - 06.00 WIB
- * - Sesi Malam: 18.00 - 20.30 WIB
+ * - Sesi Subuh / Pagi: 04:00 - 06:00 WIB (atau sesuai inputan fasil)
+ * - Sesi Malam (Magrib & Isya): 18:00 - 20:30 WIB (atau sesuai inputan fasil)
  */
-export function checkPresensiSession() {
+export function checkPresensiSession(customConfig = null) {
+  const config = customConfig || getActiveSessionConfig();
   const now = new Date();
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
-  // Subuh: 04:00 (240 menit) sampai 06:00 (360 menit)
-  const isSubuh = currentMinutes >= 240 && currentMinutes <= 360;
+  const subuhStartMin = timeToMinutes(config.subuhStart);
+  const subuhEndMin = timeToMinutes(config.subuhEnd);
+  const malamStartMin = timeToMinutes(config.malamStart);
+  const malamEndMin = timeToMinutes(config.malamEnd);
 
-  // Malam: 18:00 (1080 menit) sampai 20:30 (1230 menit)
-  const isMalam = currentMinutes >= 1080 && currentMinutes <= 1230;
+  const isSubuh = currentMinutes >= subuhStartMin && currentMinutes <= subuhEndMin;
+  const isMalam = currentMinutes >= malamStartMin && currentMinutes <= malamEndMin;
 
   if (isSubuh) {
-    const sisa = 360 - currentMinutes;
+    const sisa = subuhEndMin - currentMinutes;
     return {
       session: "Subuh",
+      sessionLabel: "Sesi Subuh / Pagi",
       isActive: true,
-      timeRange: "04:00 - 06:00 WIB",
+      timeRange: `${config.subuhStart} - ${config.subuhEnd} WIB`,
       statusText: `Sesi dibuka - sisa ${sisa} menit`,
       isSubuh: true,
-      isMalam: false
+      isMalam: false,
+      config
     };
   }
 
   if (isMalam) {
-    const sisa = 1230 - currentMinutes;
+    const sisa = malamEndMin - currentMinutes;
     return {
-      session: "Malam (Maghrib & Isya)",
+      session: "Malam",
+      sessionLabel: "Sesi Malam (Magrib & Isya)",
       isActive: true,
-      timeRange: "18:00 - 20:30 WIB",
+      timeRange: `${config.malamStart} - ${config.malamEnd} WIB`,
       statusText: `Sesi dibuka - sisa ${sisa} menit`,
       isSubuh: false,
-      isMalam: true
+      isMalam: true,
+      config
     };
   }
 
   // Di luar jam sesi
-  let nextText = "Sesi Subuh dibuka pukul 04:00 WIB";
-  if (currentMinutes > 360 && currentMinutes < 1080) {
-    nextText = "Sesi Malam dibuka pukul 18:00 WIB";
+  let nextText = `Sesi Subuh dibuka pukul ${config.subuhStart} WIB`;
+  if (currentMinutes > subuhEndMin && currentMinutes < malamStartMin) {
+    nextText = `Sesi Malam (Magrib & Isya) dibuka pukul ${config.malamStart} WIB`;
   }
 
   return {
     session: "Di Luar Jam Sesi",
+    sessionLabel: "Di Luar Jam Sesi",
     isActive: false,
-    timeRange: "Subuh (04:00 - 06:00) · Malam (18:00 - 20:30)",
+    timeRange: `Subuh (${config.subuhStart} - ${config.subuhEnd}) · Malam (${config.malamStart} - ${config.malamEnd})`,
     statusText: nextText,
     isSubuh: false,
-    isMalam: false
+    isMalam: false,
+    config
   };
 }

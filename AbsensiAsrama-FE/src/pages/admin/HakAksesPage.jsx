@@ -15,7 +15,6 @@ export default function HakAksesPage() {
   ];
 
   const [users, setUsers] = useState([]);
-  const [originalUsers, setOriginalUsers] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [toastMessage, setToastMessage] = useState("");
 
@@ -38,7 +37,7 @@ export default function HakAksesPage() {
                 email: u.email,
                 currentRole: formatted,
                 newRole: formatted,
-                assignedBuilding: rawRole === "fasil" ? "Gedung Al-Farabi" : "Tidak diperlukan"
+                assignedBuilding: rawRole === "fasil" ? (u.nomorKamar || "Asrama Hijau") : "Tidak diperlukan"
               };
             })
           );
@@ -60,7 +59,7 @@ export default function HakAksesPage() {
             assignedBuilding:
               newRole === "Fasil"
                 ? user.assignedBuilding === "Tidak diperlukan"
-                  ? "Pilih gedung fasil..."
+                  ? "Asrama Hijau"
                   : user.assignedBuilding
                 : "Tidak diperlukan"
           };
@@ -76,19 +75,13 @@ export default function HakAksesPage() {
     );
   };
 
-  const handleReset = () => {
-    setUsers(initialUsers);
-    setToastMessage("Perubahan dibatalkan.");
-    setTimeout(() => setToastMessage(""), 3000);
-  };
-
   const handleSave = async () => {
     try {
       const changed = users.filter((u) => u.currentRole !== u.newRole);
       for (const u of changed) {
         await updateUser(u.id, { role: u.newRole.toLowerCase() });
       }
-      setToastMessage("Perubahan hak akses berhasil disimpan ke database!");
+      setToastMessage("Perubahan hak akses berhasil disimpan!");
       setTimeout(() => setToastMessage(""), 3500);
       setUsers((prev) => prev.map((u) => ({ ...u, currentRole: u.newRole })));
     } catch (e) {
@@ -102,47 +95,52 @@ export default function HakAksesPage() {
       u.email.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const hasChanges = users.some((u) => u.currentRole !== u.newRole);
+  const fontStack = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Inter", system-ui, sans-serif';
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-      {/* 1. Header Row */}
-      <div>
-        <div
-          style={{
-            fontSize: "11px",
-            fontWeight: "800",
-            color: "#2563eb",
-            letterSpacing: "1.2px",
-            textTransform: "uppercase",
-            marginBottom: "4px"
-          }}
-        >
-          OTORISASI
+    <div style={{ display: "flex", flexDirection: "column", gap: "24px", fontFamily: fontStack }}>
+      {/* 1. Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px" }}>
+        <div>
+          <h1 style={{ fontSize: "26px", fontWeight: "700", color: "#1c1c1e", margin: "0 0 4px 0", letterSpacing: "-0.5px" }}>
+            Hak Akses & Peran
+          </h1>
+          <p style={{ fontSize: "14px", color: "#8e8e93", margin: 0 }}>
+            Atur dan tetapkan peran (Admin, Fasilitator, Penghuni) untuk setiap pengguna.
+          </p>
         </div>
-        <h1
-          style={{
-            fontSize: "24px",
-            fontWeight: "800",
-            color: "#0f172a",
-            margin: "0 0 6px 0",
-            letterSpacing: "-0.5px"
-          }}
-        >
-          Hak Akses
-        </h1>
-        <p style={{ margin: 0, fontSize: "13.5px", color: "#64748b" }}>
-          Atur role akun maupun akses setiap pengguna.
-        </p>
+
+        {hasChanges && (
+          <button
+            onClick={handleSave}
+            style={{
+              backgroundColor: "#007aff",
+              color: "#ffffff",
+              border: "none",
+              borderRadius: "10px",
+              padding: "10px 22px",
+              fontSize: "13px",
+              fontWeight: "600",
+              cursor: "pointer",
+              boxShadow: "0 2px 8px rgba(0, 122, 255, 0.3)",
+              fontFamily: fontStack
+            }}
+          >
+            Simpan Perubahan Peran
+          </button>
+        )}
       </div>
 
       {toastMessage && (
         <div
           style={{
-            backgroundColor: "#dcfce7",
-            border: "1px solid #bbf7d0",
-            color: "#15803d",
+            backgroundColor: "rgba(52, 199, 89, 0.12)",
+            border: "1px solid rgba(52, 199, 89, 0.25)",
+            color: "#34c759",
             padding: "12px 18px",
-            borderRadius: "10px",
-            fontSize: "13px",
+            borderRadius: "12px",
+            fontSize: "13.5px",
             fontWeight: "600",
             display: "flex",
             alignItems: "center",
@@ -150,394 +148,153 @@ export default function HakAksesPage() {
           }}
         >
           <CheckCircle2 size={18} />
-          <span>{toastMessage}</span>
+          {toastMessage}
         </div>
       )}
 
-      {/* 2. Main Table Card */}
+      {/* 2. Content Card */}
       <div
         style={{
           backgroundColor: "#ffffff",
           borderRadius: "18px",
-          border: "1px solid #e2e8f0",
-          boxShadow: "0 2px 6px rgba(0, 0, 0, 0.03)",
+          border: "1px solid rgba(0, 0, 0, 0.05)",
+          boxShadow: "0 2px 10px rgba(0, 0, 0, 0.03)",
           overflow: "hidden"
         }}
       >
-        {/* Top Actions Bar inside Card */}
-        <div
-          style={{
-            padding: "20px 24px",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            flexWrap: "wrap",
-            gap: "14px",
-            borderBottom: "1px solid #f1f5f9"
-          }}
-        >
-          {/* Search Box */}
-          <div style={{ position: "relative", width: "320px", maxWidth: "100%" }}>
-            <Search
-              size={16}
-              style={{
-                position: "absolute",
-                left: "14px",
-                top: "50%",
-                transform: "translateY(-50%)",
-                color: "#94a3b8"
-              }}
-            />
+        {/* Search */}
+        <div style={{ padding: "18px 20px", borderBottom: "1px solid #f2f2f7" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              backgroundColor: "#f2f2f7",
+              borderRadius: "12px",
+              border: "1px solid #e5e5ea",
+              padding: "8px 14px",
+              maxWidth: "320px"
+            }}
+          >
+            <Search size={15} color="#8e8e93" />
             <input
               type="text"
-              placeholder="Cari pengguna..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Cari nama pengguna..."
               style={{
                 width: "100%",
-                padding: "9px 14px 9px 40px",
-                borderRadius: "10px",
-                border: "1px solid #cbd5e1",
+                border: "none",
+                background: "transparent",
                 fontSize: "13px",
-                color: "#0f172a",
                 outline: "none",
-                boxSizing: "border-box"
+                color: "#1c1c1e",
+                fontFamily: fontStack
               }}
             />
-          </div>
-
-          {/* Action Buttons */}
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <button
-              type="button"
-              onClick={handleReset}
-              style={{
-                backgroundColor: "#ffffff",
-                color: "#475569",
-                border: "1px solid #cbd5e1",
-                borderRadius: "10px",
-                padding: "9px 18px",
-                fontSize: "13px",
-                fontWeight: "600",
-                cursor: "pointer",
-                transition: "all 0.15s ease"
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f8fafc")}
-              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#ffffff")}
-            >
-              Batalkan Perubahan
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              style={{
-                backgroundColor: "#2563eb",
-                color: "#ffffff",
-                border: "none",
-                borderRadius: "10px",
-                padding: "9px 20px",
-                fontSize: "13px",
-                fontWeight: "600",
-                cursor: "pointer",
-                boxShadow: "0 2px 8px rgba(37, 99, 235, 0.25)",
-                transition: "all 0.15s ease"
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#1d4ed8")}
-              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#2563eb")}
-            >
-              Simpan Perubahan
-            </button>
           </div>
         </div>
 
-        {/* Table Area */}
+        {/* Table */}
         <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "13px" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "13.5px" }}>
             <thead>
-              <tr style={{ borderBottom: "1px solid #e2e8f0", color: "#64748b", fontSize: "11.5px", fontWeight: "700", letterSpacing: "0.5px" }}>
-                <th style={{ padding: "16px 24px" }}>PENGGUNA</th>
-                <th style={{ padding: "16px 20px" }}>EMAIL</th>
-                <th style={{ padding: "16px 20px" }}>ROLE SAAT INI</th>
-                <th style={{ padding: "16px 20px" }}>ROLE BARU</th>
-                <th style={{ padding: "16px 24px" }}>GEDUNG PENUGASAN</th>
+              <tr style={{ backgroundColor: "#fafafc", borderBottom: "1px solid #e5e5ea", color: "#8e8e93", fontSize: "11.5px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                <th style={{ padding: "16px 20px" }}>Pengguna</th>
+                <th style={{ padding: "16px 20px" }}>Peran Saat Ini</th>
+                <th style={{ padding: "16px 20px" }}>Ubah Peran</th>
+                <th style={{ padding: "16px 20px" }}>Penugasan Asrama</th>
               </tr>
             </thead>
             <tbody>
-              {filteredUsers.length === 0 ? (
-                <tr>
-                  <td colSpan={5} style={{ textAlign: "center", padding: "48px 16px", color: "#94a3b8" }}>
-                    <div style={{ fontSize: "14px", fontWeight: "700", color: "#475569" }}>
-                      Belum Ada Pengguna di Database
-                    </div>
-                    <div style={{ fontSize: "12px", marginTop: "4px", color: "#94a3b8" }}>
-                      Akun yang terdaftar di MySQL akan otomatis muncul di sini untuk dikelola perannya.
-                    </div>
+              {filteredUsers.map((u, index) => (
+                <tr
+                  key={u.id}
+                  style={{
+                    borderBottom: index === filteredUsers.length - 1 ? "none" : "1px solid #f2f2f7",
+                    transition: "background-color 0.1s ease"
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f9f9fb")}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                >
+                  <td style={{ padding: "14px 20px" }}>
+                    <div style={{ fontWeight: "600", color: "#1c1c1e" }}>{u.name}</div>
+                    <div style={{ fontSize: "12px", color: "#8e8e93" }}>{u.email}</div>
+                  </td>
+                  <td style={{ padding: "14px 20px" }}>
+                    <span
+                      style={{
+                        backgroundColor:
+                          u.currentRole === "Admin"
+                            ? "rgba(0, 122, 255, 0.12)"
+                            : u.currentRole === "Fasil"
+                            ? "rgba(52, 199, 89, 0.12)"
+                            : "rgba(142, 142, 147, 0.12)",
+                        color:
+                          u.currentRole === "Admin"
+                            ? "#007aff"
+                            : u.currentRole === "Fasil"
+                            ? "#34c759"
+                            : "#8e8e93",
+                        fontSize: "12px",
+                        fontWeight: "600",
+                        padding: "4px 10px",
+                        borderRadius: "12px"
+                      }}
+                    >
+                      {u.currentRole}
+                    </span>
+                  </td>
+                  <td style={{ padding: "14px 20px" }}>
+                    <select
+                      value={u.newRole}
+                      onChange={(e) => handleRoleChange(u.id, e.target.value)}
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: "10px",
+                        border: "1px solid #e5e5ea",
+                        backgroundColor: "#f2f2f7",
+                        fontSize: "13px",
+                        color: "#1c1c1e",
+                        outline: "none",
+                        fontFamily: fontStack
+                      }}
+                    >
+                      <option value="Admin">Admin</option>
+                      <option value="Fasil">Fasilitator</option>
+                      <option value="Penghuni">Penghuni</option>
+                    </select>
+                  </td>
+                  <td style={{ padding: "14px 20px" }}>
+                    {u.newRole === "Fasil" ? (
+                      <select
+                        value={u.assignedBuilding}
+                        onChange={(e) => handleBuildingChange(u.id, e.target.value)}
+                        style={{
+                          padding: "6px 12px",
+                          borderRadius: "10px",
+                          border: "1px solid #e5e5ea",
+                          backgroundColor: "#f2f2f7",
+                          fontSize: "13px",
+                          color: "#1c1c1e",
+                          outline: "none",
+                          fontFamily: fontStack
+                        }}
+                      >
+                        {buildingsList.slice(1).map((b) => (
+                          <option key={b} value={b}>
+                            {b}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span style={{ color: "#8e8e93", fontSize: "12.5px" }}>—</span>
+                    )}
                   </td>
                 </tr>
-              ) : (
-                filteredUsers.map((row, index) => {
-                  const isFasil = row.newRole === "Fasil";
-                  return (
-                    <tr
-                      key={row.id}
-                      style={{
-                        borderBottom: index === filteredUsers.length - 1 ? "none" : "1px solid #f8fafc",
-                        transition: "background-color 0.1s ease"
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#fafafa")}
-                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-                    >
-                      <td style={{ padding: "14px 24px", fontWeight: "700", color: "#0f172a" }}>
-                        {row.name}
-                      </td>
-                      <td style={{ padding: "14px 20px", color: "#64748b" }}>
-                        {row.email}
-                      </td>
-                      <td style={{ padding: "14px 20px" }}>
-                        <span
-                          style={{
-                            backgroundColor: "#eff6ff",
-                            color: "#1e3fae",
-                            fontSize: "11.5px",
-                            fontWeight: "700",
-                            padding: "4px 12px",
-                            borderRadius: "999px",
-                            display: "inline-block"
-                          }}
-                        >
-                          {row.currentRole}
-                        </span>
-                      </td>
-                      <td style={{ padding: "14px 20px" }}>
-                        <select
-                          value={row.newRole}
-                          onChange={(e) => handleRoleChange(row.id, e.target.value)}
-                          style={{
-                            padding: "6px 10px",
-                            borderRadius: "8px",
-                            border: "1px solid #cbd5e1",
-                            fontSize: "12.5px",
-                            color: "#0f172a",
-                            backgroundColor: "#ffffff",
-                            cursor: "pointer",
-                            outline: "none",
-                            minWidth: "120px"
-                          }}
-                        >
-                          <option value="Penghuni">Penghuni</option>
-                          <option value="Fasil">Fasil</option>
-                          <option value="Admin">Admin</option>
-                        </select>
-                      </td>
-                      <td style={{ padding: "14px 24px" }}>
-                        {isFasil ? (
-                          <select
-                            value={row.assignedBuilding}
-                            onChange={(e) => handleBuildingChange(row.id, e.target.value)}
-                            style={{
-                              padding: "6px 12px",
-                              borderRadius: "8px",
-                              border: "1px solid #bfdbfe",
-                              backgroundColor: "#eff6ff",
-                              color: "#1e3fae",
-                              fontSize: "12.5px",
-                              fontWeight: "500",
-                              cursor: "pointer",
-                              outline: "none",
-                              minWidth: "180px"
-                            }}
-                          >
-                            {buildingsList.map((b) => (
-                              <option key={b} value={b}>
-                                {b}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <span style={{ color: "#94a3b8", fontSize: "12.5px" }}>
-                            Tidak diperlukan
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
+              ))}
             </tbody>
           </table>
-        </div>
-
-        {/* Bottom Pagination */}
-        <div
-          style={{
-            padding: "16px 24px",
-            borderTop: "1px solid #f1f5f9",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            fontSize: "12.5px",
-            color: "#64748b"
-          }}
-        >
-          <div>
-            {filteredUsers.length} akun • Halaman 1 dari 1
-          </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-            <button
-              disabled
-              style={{
-                padding: "6px 10px",
-                borderRadius: "6px",
-                border: "1px solid #e2e8f0",
-                backgroundColor: "#f8fafc",
-                color: "#94a3b8",
-                cursor: "not-allowed"
-              }}
-            >
-              &lt;
-            </button>
-            <button
-              style={{
-                padding: "6px 12px",
-                borderRadius: "6px",
-                border: "none",
-                backgroundColor: "#1e3fae",
-                color: "#ffffff",
-                fontWeight: "700"
-              }}
-            >
-              1
-            </button>
-            <button
-              disabled
-              style={{
-                padding: "6px 10px",
-                borderRadius: "6px",
-                border: "1px solid #e2e8f0",
-                backgroundColor: "#f8fafc",
-                color: "#94a3b8",
-                cursor: "not-allowed"
-              }}
-            >
-              &gt;
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* 3. Bottom Section: Cakupan Data per Role */}
-      <div
-        style={{
-          backgroundColor: "#ffffff",
-          borderRadius: "18px",
-          border: "1px solid #e2e8f0",
-          padding: "24px",
-          boxShadow: "0 2px 6px rgba(0, 0, 0, 0.03)"
-        }}
-      >
-        <div style={{ marginBottom: "16px" }}>
-          <h2 style={{ fontSize: "16px", fontWeight: "800", color: "#0f172a", margin: "0 0 4px 0" }}>
-            Cakupan Data per Role
-          </h2>
-          <p style={{ margin: 0, fontSize: "12.5px", color: "#64748b" }}>
-            Akses data berdasarkan level role.
-          </p>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px" }}>
-          {/* Role 1: Penghuni */}
-          <div
-            style={{
-              backgroundColor: "#f8fafc",
-              border: "1px solid #e2e8f0",
-              borderRadius: "12px",
-              padding: "16px 18px"
-            }}
-          >
-            <span
-              style={{
-                backgroundColor: "#dbeafe",
-                color: "#1d4ed8",
-                fontSize: "11px",
-                fontWeight: "700",
-                padding: "3px 10px",
-                borderRadius: "999px",
-                display: "inline-block",
-                marginBottom: "12px"
-              }}
-            >
-              Penghuni
-            </span>
-            <div style={{ fontSize: "13.5px", fontWeight: "700", color: "#0f172a", marginBottom: "4px" }}>
-              Data diri sendiri
-            </div>
-            <div style={{ fontSize: "12px", color: "#64748b", lineHeight: "1.5" }}>
-              Profil peserta dan izin milik sendiri.
-            </div>
-          </div>
-
-          {/* Role 2: Fasil */}
-          <div
-            style={{
-              backgroundColor: "#f8fafc",
-              border: "1px solid #e2e8f0",
-              borderRadius: "12px",
-              padding: "16px 18px"
-            }}
-          >
-            <span
-              style={{
-                backgroundColor: "#fef3c7",
-                color: "#b45309",
-                fontSize: "11px",
-                fontWeight: "700",
-                padding: "3px 10px",
-                borderRadius: "999px",
-                display: "inline-block",
-                marginBottom: "12px"
-              }}
-            >
-              Fasil
-            </span>
-            <div style={{ fontSize: "13.5px", fontWeight: "700", color: "#0f172a", marginBottom: "4px" }}>
-              Penghuni di gedung yang dipetakan
-            </div>
-            <div style={{ fontSize: "12px", color: "#64748b", lineHeight: "1.5" }}>
-              Peserta dan izin satu gedung.
-            </div>
-          </div>
-
-          {/* Role 3: Admin */}
-          <div
-            style={{
-              backgroundColor: "#f8fafc",
-              border: "1px solid #e2e8f0",
-              borderRadius: "12px",
-              padding: "16px 18px"
-            }}
-          >
-            <span
-              style={{
-                backgroundColor: "#ede9fe",
-                color: "#6d28d9",
-                fontSize: "11px",
-                fontWeight: "700",
-                padding: "3px 10px",
-                borderRadius: "999px",
-                display: "inline-block",
-                marginBottom: "12px"
-              }}
-            >
-              Admin
-            </span>
-            <div style={{ fontSize: "13.5px", fontWeight: "700", color: "#0f172a", marginBottom: "4px" }}>
-              Seluruh data
-            </div>
-            <div style={{ fontSize: "12px", color: "#64748b", lineHeight: "1.5" }}>
-              Akses penuh seluruh gedung dan pengguna.
-            </div>
-          </div>
         </div>
       </div>
     </div>

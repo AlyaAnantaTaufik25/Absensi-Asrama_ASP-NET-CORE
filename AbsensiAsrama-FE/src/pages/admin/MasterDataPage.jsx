@@ -13,12 +13,10 @@ import {
   Navigation
 } from "lucide-react";
 import { API_BASE_URL, getUsers } from "../../services/api";
+import { showToast } from "../../utils/toast";
 
 const API = API_BASE_URL;
 
-/**
- * Komponen Peta Interaktif Leaflet OpenStreetMap
- */
 function BuildingMapPicker({ lat, lng, radius, onChangeLocation }) {
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -47,9 +45,9 @@ function BuildingMapPicker({ lat, lng, radius, onChangeLocation }) {
 
       const marker = window.L.marker([parsedLat, parsedLng], { draggable: true }).addTo(map);
       const circle = window.L.circle([parsedLat, parsedLng], {
-        color: "#2563eb",
-        fillColor: "#3b82f6",
-        fillOpacity: 0.25,
+        color: "#007aff",
+        fillColor: "#007aff",
+        fillOpacity: 0.2,
         radius: parsedRadius
       }).addTo(map);
 
@@ -83,16 +81,16 @@ function BuildingMapPicker({ lat, lng, radius, onChangeLocation }) {
         style={{
           height: "220px",
           width: "100%",
-          borderRadius: "10px",
-          border: "1px solid #cbd5e1",
+          borderRadius: "12px",
+          border: "1px solid #e5e5ea",
           overflow: "hidden",
           boxShadow: "0 2px 6px rgba(0,0,0,0.06)",
           zIndex: 1
         }}
       />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "6px" }}>
-        <span style={{ fontSize: "11px", color: "#64748b" }}>
-          💡 Peta asli OpenStreetMap. Klik pada peta atau geser pin merah untuk memposisikan koordinat gedung.
+        <span style={{ fontSize: "11.5px", color: "#8e8e93" }}>
+          Peta OpenStreetMap. Klik pada peta atau geser pin merah untuk memposisikan koordinat gedung.
         </span>
       </div>
     </div>
@@ -103,12 +101,10 @@ export default function MasterDataPage() {
   const [activeSubTab, setActiveSubTab] = useState("gedung"); // "gedung" | "lantai" | "kamar"
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Modals state
   const [showModalGedung, setShowModalGedung] = useState(false);
   const [showModalLantai, setShowModalLantai] = useState(false);
   const [showModalKamar, setShowModalKamar] = useState(false);
 
-  // Data dari database
   const [gedungList, setGedungList] = useState([]);
   const [kamarList, setKamarList] = useState([]);
   const [lantaiList, setLantaiList] = useState([]);
@@ -116,11 +112,10 @@ export default function MasterDataPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Editing tracking
   const [editingGedung, setEditingGedung] = useState(null);
   const [editingKamar, setEditingKamar] = useState(null);
+  const [selectedFasils, setSelectedFasils] = useState([]);
 
-  // Form states for modals
   const [formGedung, setFormGedung] = useState({
     nama: "",
     namaFasil: "",
@@ -138,74 +133,113 @@ export default function MasterDataPage() {
     idGedung: ""
   });
 
-  // Fetch gedung dari API
   const fetchGedung = async () => {
     try {
       setLoading(true);
       const res = await fetch(`${API}/api/gedung`);
-      if (!res.ok) throw new Error("Gagal mengambil data gedung");
-      const data = await res.json();
-      setGedungList(
-        data.map((g) => ({
-          id: g.idGedung,
-          nama: g.namaGedung,
-          idUser: g.idUser,
-          fasil: g.namaFasil || "-",
-          lat: "-0.9144",
-          lng: "100.4608",
-          radius: "100m"
-        }))
-      );
+      if (res.ok) {
+        const data = await res.json();
+        localStorage.setItem("mynava_gedung_cache", JSON.stringify(data));
+        setGedungList(
+          data.map((g) => ({
+            id: g.idGedung,
+            nama: g.namaGedung,
+            idUser: g.idUser,
+            fasil: g.namaFasil || "-",
+            lat: "-0.9144",
+            lng: "100.4608",
+            radius: "100m"
+          }))
+        );
+        setError(null);
+        return;
+      }
     } catch (e) {
-      setError(e.message);
+      console.warn("Gagal mengambil data gedung dari backend:", e);
     } finally {
       setLoading(false);
     }
+    const cached = localStorage.getItem("mynava_gedung_cache");
+    if (cached) {
+      try {
+        const data = JSON.parse(cached);
+        setGedungList(
+          data.map((g) => ({
+            id: g.idGedung,
+            nama: g.namaGedung,
+            idUser: g.idUser,
+            fasil: g.namaFasil || "-",
+            lat: "-0.9144",
+            lng: "100.4608",
+            radius: "100m"
+          }))
+        );
+      } catch {}
+    }
   };
 
-  // Fetch kamar dari API
   const fetchKamar = async () => {
     try {
       setLoading(true);
       const res = await fetch(`${API}/api/kamar`);
-      if (!res.ok) throw new Error("Gagal mengambil data kamar");
-      const data = await res.json();
-      setKamarList(
-        data.map((k) => ({
-          id: k.noKamar,
-          nomor: k.noKamar,
-          gedung: k.namaGedung || "-",
-          lantai: String(k.lantai),
-          idGedung: k.idGedung,
-          kapasitas: "4 Orang",
-          terisi: "Terisi"
-        }))
-      );
-
-      // Hitung lantai unik dari kamar
-      const lantaiMap = {};
-      data.forEach((k) => {
-        const key = `${k.idGedung}-${k.lantai}`;
-        if (!lantaiMap[key]) {
-          lantaiMap[key] = {
-            id: key,
+      if (res.ok) {
+        const data = await res.json();
+        localStorage.setItem("mynava_kamar_cache", JSON.stringify(data));
+        setKamarList(
+          data.map((k) => ({
+            id: k.noKamar,
+            nomor: k.noKamar,
             gedung: k.namaGedung || "-",
-            nomor: `Lantai ${k.lantai}`,
-            kamar: 0
-          };
-        }
-        lantaiMap[key].kamar++;
-      });
-      setLantaiList(
-        Object.values(lantaiMap).map((l) => ({
-          ...l,
-          kamar: `${l.kamar} Kamar`
-        }))
-      );
+            lantai: String(k.lantai),
+            idGedung: k.idGedung,
+            kapasitas: "4 Orang",
+            terisi: "Terisi"
+          }))
+        );
+
+        const lantaiMap = {};
+        data.forEach((k) => {
+          const key = `${k.idGedung}-${k.lantai}`;
+          if (!lantaiMap[key]) {
+            lantaiMap[key] = {
+              id: key,
+              gedung: k.namaGedung || "-",
+              nomor: `Lantai ${k.lantai}`,
+              kamar: 0
+            };
+          }
+          lantaiMap[key].kamar++;
+        });
+        setLantaiList(
+          Object.values(lantaiMap).map((l) => ({
+            ...l,
+            kamar: `${l.kamar} Kamar`
+          }))
+        );
+        setError(null);
+        return;
+      }
     } catch (e) {
-      setError(e.message);
+      console.warn("Gagal mengambil data kamar dari backend:", e);
     } finally {
       setLoading(false);
+    }
+    const cachedKamar = localStorage.getItem("mynava_kamar_cache");
+    if (cachedKamar) {
+      try {
+        const data = JSON.parse(cachedKamar);
+        setKamarList(
+          data.map((k) => ({
+            id: k.noKamar,
+            nomor: k.noKamar,
+            gedung: k.namaGedung || "-",
+            lantai: String(k.lantai),
+            idGedung: k.idGedung,
+            kapasitas: "4 Orang",
+            terisi: "Terisi"
+          }))
+        );
+      } catch {}
     }
   };
 
@@ -223,58 +257,58 @@ export default function MasterDataPage() {
     });
   }, []);
 
-  // Hapus gedung
   const handleDeleteGedung = async (id, nama) => {
     if (!window.confirm(`Yakin ingin menghapus ${nama} beserta seluruh kamar di dalamnya dari database?`)) return;
     try {
       const res = await fetch(`${API}/api/gedung/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Gagal menghapus gedung");
-      alert("Gedung berhasil dihapus dari database!");
+      showToast("Gedung berhasil dihapus!", "success");
       await fetchGedung();
       await fetchKamar();
     } catch (e) {
-      alert("Error: " + e.message);
+      showToast("Error: " + e.message, "error");
     }
   };
 
-  // Hapus kamar
   const handleDeleteKamar = async (noKamar) => {
     if (!window.confirm(`Yakin ingin menghapus kamar ${noKamar} dari database?`)) return;
     try {
       const res = await fetch(`${API}/api/kamar/${noKamar}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Gagal menghapus kamar");
-      alert("Kamar berhasil dihapus dari database!");
+      showToast("Kamar berhasil dihapus!", "success");
       await fetchKamar();
     } catch (e) {
-      alert("Error: " + e.message);
+      showToast("Error: " + e.message, "error");
     }
   };
 
-  // Open modal handlers
   const handleOpenTambahGedung = () => {
     setEditingGedung(null);
+    setSelectedFasils([]);
     setFormGedung({
       nama: "",
-      namaFasil: fasilOptions[0]?.nama || "",
-      idUser: fasilOptions[0]?.idUser ? String(fasilOptions[0].idUser) : "",
-      lat: "-0.914400",
-      lng: "100.460800",
-      radius: "100",
-      jumlahLantai: "3",
-      kamarPerLantai: "4"
+      namaFasil: "",
+      idUser: "",
+      lat: "",
+      lng: "",
+      radius: "",
+      jumlahLantai: "",
+      kamarPerLantai: ""
     });
     setShowModalGedung(true);
   };
 
   const handleOpenEditGedung = (g) => {
     setEditingGedung(g.id);
+    const fasilNames = g.fasil && g.fasil !== "-" ? g.fasil.split(",").map((s) => s.trim()).filter(Boolean) : [];
+    setSelectedFasils(fasilNames);
     setFormGedung({
       nama: g.nama,
       namaFasil: g.fasil && g.fasil !== "-" ? g.fasil : "",
       idUser: g.idUser ? String(g.idUser) : "",
-      lat: "-0.914400",
-      lng: "100.460800",
-      radius: "100",
+      lat: g.lat ? g.lat.replace("m", "") : "",
+      lng: g.lng || "",
+      radius: g.radius ? g.radius.replace("m", "") : "",
       jumlahLantai: "3",
       kamarPerLantai: "0"
     });
@@ -301,7 +335,6 @@ export default function MasterDataPage() {
     setShowModalKamar(true);
   };
 
-  // Geolocation
   const handleUseCurrentLocation = () => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -309,29 +342,37 @@ export default function MasterDataPage() {
           const lat = pos.coords.latitude.toFixed(6);
           const lng = pos.coords.longitude.toFixed(6);
           setFormGedung((prev) => ({ ...prev, lat, lng }));
-          alert(`Lokasi GPS terdeteksi: ${lat}, ${lng}`);
+          showToast(`Lokasi GPS terdeteksi: ${lat}, ${lng}`, "info");
         },
-        () => alert("Gagal mendeteksi lokasi GPS. Pastikan izin lokasi browser telah diizinkan.")
+        () => showToast("Gagal mendeteksi lokasi GPS. Pastikan izin lokasi browser telah diizinkan.", "error")
       );
     } else {
-      alert("Browser tidak mendukung geolokasi GPS.");
+      showToast("Browser tidak mendukung geolokasi GPS.", "warning");
     }
   };
 
-  // Handlers simpan gedung
   const handleSaveGedung = async (e) => {
     e.preventDefault();
     if (!formGedung.nama.trim()) {
-      alert("Nama gedung wajib diisi.");
+      showToast("Nama gedung wajib diisi.", "warning");
       return;
     }
+    const finalFasilNames = selectedFasils.length > 0 ? selectedFasils.join(", ") : formGedung.namaFasil.trim();
+    if (!finalFasilNames) {
+      showToast("Silakan pilih minimal satu fasilitator pengelola.", "warning");
+      return;
+    }
+
+    const firstFasilObj = fasilOptions.find(f => f.nama.toLowerCase() === (selectedFasils[0] || formGedung.namaFasil).toLowerCase());
+    const assignedUserId = firstFasilObj ? firstFasilObj.idUser : (formGedung.idUser ? parseInt(formGedung.idUser) : null);
+
     try {
       const url = editingGedung ? `${API}/api/gedung/${editingGedung}` : `${API}/api/gedung`;
       const method = editingGedung ? "PUT" : "POST";
       const payload = {
         namaGedung: formGedung.nama.trim(),
-        namaFasil: formGedung.namaFasil.trim(),
-        idUser: formGedung.idUser ? parseInt(formGedung.idUser) : null,
+        namaFasil: finalFasilNames,
+        idUser: assignedUserId,
         jumlahLantai: parseInt(formGedung.jumlahLantai) || 1,
         kamarPerLantai: parseInt(formGedung.kamarPerLantai) || 0,
         latitude: parseFloat(formGedung.lat) || -0.9144,
@@ -351,20 +392,18 @@ export default function MasterDataPage() {
       }
 
       setShowModalGedung(false);
-      setEditingGedung(null);
-      alert(editingGedung ? "Data gedung berhasil diperbarui!" : "Gedung dan struktur kamar berhasil ditambahkan ke database!");
+      showToast(editingGedung ? "Data gedung berhasil diperbarui!" : "Gedung dan kamar berhasil disimpan!", "success");
       await fetchGedung();
       await fetchKamar();
-    } catch (err) {
-      alert("Terjadi kesalahan: " + err.message);
+    } catch (e) {
+      showToast("Error: " + e.message, "error");
     }
   };
 
-  // Handlers simpan kamar
   const handleSaveKamar = async (e) => {
     e.preventDefault();
     if (!formKamar.idGedung) {
-      alert("Pilih gedung terlebih dahulu.");
+      showToast("Pilih gedung terlebih dahulu.", "warning");
       return;
     }
     try {
@@ -386,14 +425,13 @@ export default function MasterDataPage() {
       setShowModalKamar(false);
       setEditingKamar(null);
       setFormKamar({ noKamar: "", lantai: "1", idGedung: "" });
-      alert(editingKamar ? "Kamar berhasil diperbarui!" : "Kamar berhasil ditambahkan ke database!");
+      showToast(editingKamar ? "Kamar berhasil diperbarui!" : "Kamar berhasil ditambahkan!", "success");
       await fetchKamar();
     } catch (err) {
-      alert("Error: " + err.message);
+      showToast("Error: " + err.message, "error");
     }
   };
 
-  // Filtered lists
   const filteredGedung = gedungList.filter(
     (g) =>
       g.nama.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -406,188 +444,155 @@ export default function MasterDataPage() {
       k.gedung.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const fontStack = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Inter", system-ui, sans-serif';
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "24px", fontFamily: fontStack }}>
       {/* Error banner */}
       {error && (
-        <div style={{ padding: "10px 16px", backgroundColor: "#fee2e2", borderRadius: "8px", color: "#b91c1c", fontSize: "13px" }}>
-          ⚠️ {error} — Pastikan backend berjalan dan MySQL aktif.
-        </div>
-      )}
-
-      {/* Loading indicator */}
-      {loading && (
-        <div style={{ padding: "10px 16px", backgroundColor: "#eff6ff", borderRadius: "8px", color: "#1d4ed8", fontSize: "13px" }}>
-          ⏳ Memuat data dari database...
+        <div style={{ padding: "12px 18px", backgroundColor: "rgba(255, 59, 48, 0.12)", border: "1px solid rgba(255, 59, 48, 0.25)", borderRadius: "12px", color: "#ff3b30", fontSize: "13.5px" }}>
+          {error} — Pastikan backend berjalan dan MySQL aktif.
         </div>
       )}
 
       {/* 1. Header Row */}
       <div>
-        <div
-          style={{
-            fontSize: "11px",
-            fontWeight: "800",
-            color: "#2349d4",
-            letterSpacing: "1.2px",
-            textTransform: "uppercase",
-            marginBottom: "4px"
-          }}
-        >
-          KONFIGURASI ASRAMA
-        </div>
         <h1
           style={{
-            fontSize: "24px",
-            fontWeight: "800",
-            color: "#0f172a",
-            letterSpacing: "-0.4px",
+            fontSize: "26px",
+            fontWeight: "700",
+            color: "#1c1c1e",
+            letterSpacing: "-0.5px",
             margin: "0 0 4px 0"
           }}
         >
-          Data Gedung
+          Master Data Asrama
         </h1>
-        <p style={{ fontSize: "13.5px", color: "#64748b", margin: 0 }}>
+        <p style={{ fontSize: "14px", color: "#8e8e93", margin: 0 }}>
           Kelola data gedung, penugasan fasilitator pengelola, struktur lantai, dan kamar asrama.
         </p>
       </div>
 
-      {/* 2. Subtabs: Gedung | Lantai | Kamar */}
-      <div style={{ display: "flex", gap: "10px" }}>
-        {/* Gedung tab */}
+      {/* 2. Apple HIG Segmented Subtabs: Gedung | Lantai | Kamar */}
+      <div
+        style={{
+          display: "inline-flex",
+          backgroundColor: "#e5e5ea",
+          padding: "3px",
+          borderRadius: "12px",
+          gap: "2px",
+          alignSelf: "flex-start"
+        }}
+      >
         <button
           onClick={() => setActiveSubTab("gedung")}
           style={{
             display: "inline-flex",
             alignItems: "center",
             gap: "8px",
-            padding: "8px 18px",
-            borderRadius: "12px",
-            border: activeSubTab === "gedung" ? "none" : "1px solid #e2e8f0",
-            backgroundColor: activeSubTab === "gedung" ? "#2349d4" : "#ffffff",
-            color: activeSubTab === "gedung" ? "#ffffff" : "#475569",
-            fontWeight: "700",
+            padding: "7px 18px",
+            borderRadius: "10px",
+            border: "none",
+            backgroundColor: activeSubTab === "gedung" ? "#ffffff" : "transparent",
+            color: activeSubTab === "gedung" ? "#1c1c1e" : "#8e8e93",
+            fontWeight: "600",
             fontSize: "13px",
             cursor: "pointer",
-            boxShadow: activeSubTab === "gedung" ? "0 4px 12px rgba(35, 73, 212, 0.25)" : "none"
+            boxShadow: activeSubTab === "gedung" ? "0 2px 6px rgba(0, 0, 0, 0.08)" : "none",
+            transition: "all 0.15s ease",
+            fontFamily: fontStack
           }}
         >
           <Building size={15} />
-          Gedung
-          <span
-            style={{
-              backgroundColor: activeSubTab === "gedung" ? "#f59e0b" : "#f1f5f9",
-              color: activeSubTab === "gedung" ? "#ffffff" : "#64748b",
-              borderRadius: "999px",
-              padding: "1px 7px",
-              fontSize: "11px",
-              fontWeight: "800"
-            }}
-          >
-            {gedungList.length}
-          </span>
+          Gedung ({gedungList.length})
         </button>
 
-        {/* Lantai tab */}
         <button
           onClick={() => setActiveSubTab("lantai")}
           style={{
             display: "inline-flex",
             alignItems: "center",
             gap: "8px",
-            padding: "8px 18px",
-            borderRadius: "12px",
-            border: activeSubTab === "lantai" ? "none" : "1px solid #e2e8f0",
-            backgroundColor: activeSubTab === "lantai" ? "#2349d4" : "#ffffff",
-            color: activeSubTab === "lantai" ? "#ffffff" : "#475569",
-            fontWeight: "700",
+            padding: "7px 18px",
+            borderRadius: "10px",
+            border: "none",
+            backgroundColor: activeSubTab === "lantai" ? "#ffffff" : "transparent",
+            color: activeSubTab === "lantai" ? "#1c1c1e" : "#8e8e93",
+            fontWeight: "600",
             fontSize: "13px",
             cursor: "pointer",
-            boxShadow: activeSubTab === "lantai" ? "0 4px 12px rgba(35, 73, 212, 0.25)" : "none"
+            boxShadow: activeSubTab === "lantai" ? "0 2px 6px rgba(0, 0, 0, 0.08)" : "none",
+            transition: "all 0.15s ease",
+            fontFamily: fontStack
           }}
         >
           <Layers size={15} />
-          Lantai
-          <span
-            style={{
-              backgroundColor: activeSubTab === "lantai" ? "#f59e0b" : "#f1f5f9",
-              color: activeSubTab === "lantai" ? "#ffffff" : "#64748b",
-              borderRadius: "999px",
-              padding: "1px 7px",
-              fontSize: "11px",
-              fontWeight: "800"
-            }}
-          >
-            {lantaiList.length}
-          </span>
+          Lantai ({lantaiList.length})
         </button>
 
-        {/* Kamar tab */}
         <button
           onClick={() => setActiveSubTab("kamar")}
           style={{
             display: "inline-flex",
             alignItems: "center",
             gap: "8px",
-            padding: "8px 18px",
-            borderRadius: "12px",
-            border: activeSubTab === "kamar" ? "none" : "1px solid #e2e8f0",
-            backgroundColor: activeSubTab === "kamar" ? "#2349d4" : "#ffffff",
-            color: activeSubTab === "kamar" ? "#ffffff" : "#475569",
-            fontWeight: "700",
+            padding: "7px 18px",
+            borderRadius: "10px",
+            border: "none",
+            backgroundColor: activeSubTab === "kamar" ? "#ffffff" : "transparent",
+            color: activeSubTab === "kamar" ? "#1c1c1e" : "#8e8e93",
+            fontWeight: "600",
             fontSize: "13px",
             cursor: "pointer",
-            boxShadow: activeSubTab === "kamar" ? "0 4px 12px rgba(35, 73, 212, 0.25)" : "none"
+            boxShadow: activeSubTab === "kamar" ? "0 2px 6px rgba(0, 0, 0, 0.08)" : "none",
+            transition: "all 0.15s ease",
+            fontFamily: fontStack
           }}
         >
           <DoorClosed size={15} />
-          Kamar
-          <span
-            style={{
-              backgroundColor: activeSubTab === "kamar" ? "#f59e0b" : "#f1f5f9",
-              color: activeSubTab === "kamar" ? "#ffffff" : "#64748b",
-              borderRadius: "999px",
-              padding: "1px 7px",
-              fontSize: "11px",
-              fontWeight: "800"
-            }}
-          >
-            {kamarList.length}
-          </span>
+          Kamar ({kamarList.length})
         </button>
       </div>
 
       {/* 3. Main Data Card */}
-      <div className="content-card" style={{ padding: "20px 24px" }}>
+      <div
+        style={{
+          backgroundColor: "#ffffff",
+          borderRadius: "18px",
+          border: "1px solid rgba(0, 0, 0, 0.05)",
+          boxShadow: "0 2px 10px rgba(0, 0, 0, 0.03)",
+          overflow: "hidden"
+        }}
+      >
         {/* Search & Actions Bar */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "16px", marginBottom: "18px" }}>
-          <div style={{ position: "relative", flex: 1, maxWidth: "420px" }}>
-            <Search
-              size={15}
-              style={{
-                position: "absolute",
-                left: "12px",
-                top: "50%",
-                transform: "translateY(-50%)",
-                color: "#94a3b8"
-              }}
-            />
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "16px", padding: "18px 20px", borderBottom: "1px solid #f2f2f7", flexWrap: "wrap" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              backgroundColor: "#f2f2f7",
+              borderRadius: "12px",
+              border: "1px solid #e5e5ea",
+              padding: "8px 14px",
+              maxWidth: "360px",
+              flex: 1
+            }}
+          >
+            <Search size={15} color="#8e8e93" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={`Cari ${activeSubTab}...`}
+              placeholder={`Cari data ${activeSubTab}...`}
               style={{
                 width: "100%",
-                height: "38px",
-                paddingLeft: "36px",
-                paddingRight: "12px",
-                borderRadius: "10px",
-                border: "1px solid #e2e8f0",
-                backgroundColor: "#f8fafc",
-                fontSize: "12.5px",
+                border: "none",
+                background: "transparent",
+                fontSize: "13px",
                 outline: "none",
-                boxSizing: "border-box"
+                color: "#1c1c1e",
+                fontFamily: fontStack
               }}
             />
           </div>
@@ -596,18 +601,19 @@ export default function MasterDataPage() {
             <button
               onClick={handleOpenTambahGedung}
               style={{
-                backgroundColor: "#2349d4",
+                backgroundColor: "#007aff",
                 border: "none",
                 color: "#ffffff",
-                fontWeight: "700",
-                fontSize: "12.5px",
+                fontWeight: "600",
+                fontSize: "13px",
                 padding: "9px 18px",
                 borderRadius: "10px",
                 display: "inline-flex",
                 alignItems: "center",
                 gap: "6px",
                 cursor: "pointer",
-                boxShadow: "0 4px 14px -2px rgba(35, 73, 212, 0.4)"
+                boxShadow: "0 2px 8px rgba(0, 122, 255, 0.3)",
+                fontFamily: fontStack
               }}
             >
               <Plus size={15} />
@@ -619,18 +625,19 @@ export default function MasterDataPage() {
             <button
               onClick={handleOpenTambahKamar}
               style={{
-                backgroundColor: "#2349d4",
+                backgroundColor: "#007aff",
                 border: "none",
                 color: "#ffffff",
-                fontWeight: "700",
-                fontSize: "12.5px",
+                fontWeight: "600",
+                fontSize: "13px",
                 padding: "9px 18px",
                 borderRadius: "10px",
                 display: "inline-flex",
                 alignItems: "center",
                 gap: "6px",
                 cursor: "pointer",
-                boxShadow: "0 4px 14px -2px rgba(35, 73, 212, 0.4)"
+                boxShadow: "0 2px 8px rgba(0, 122, 255, 0.3)",
+                fontFamily: fontStack
               }}
             >
               <Plus size={15} />
@@ -641,60 +648,60 @@ export default function MasterDataPage() {
 
         {/* 3.1 Gedung Table */}
         {activeSubTab === "gedung" && (
-          <div className="data-table-container">
-            <table className="asrama-data-table">
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "13.5px" }}>
               <thead>
-                <tr>
-                  <th>Nama Gedung</th>
-                  <th>Latitude</th>
-                  <th>Longitude</th>
-                  <th>Radius</th>
-                  <th>Fasil Pengelola</th>
-                  <th style={{ textAlign: "center" }}>Aksi</th>
+                <tr style={{ backgroundColor: "#fafafc", borderBottom: "1px solid #e5e5ea", color: "#8e8e93", fontSize: "11.5px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  <th style={{ padding: "16px 20px" }}>Nama Gedung</th>
+                  <th style={{ padding: "16px 20px" }}>Latitude</th>
+                  <th style={{ padding: "16px 20px" }}>Longitude</th>
+                  <th style={{ padding: "16px 20px" }}>Radius Geofence</th>
+                  <th style={{ padding: "16px 20px" }}>Fasilitator Pengelola</th>
+                  <th style={{ padding: "16px 20px", textAlign: "right" }}>Aksi</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredGedung.length === 0 ? (
                   <tr>
-                    <td colSpan={6} style={{ textAlign: "center", padding: "32px", color: "#94a3b8" }}>
+                    <td colSpan={6} style={{ textAlign: "center", padding: "48px 16px", color: "#8e8e93" }}>
                       Belum ada data gedung di database.
                     </td>
                   </tr>
                 ) : (
-                  filteredGedung.map((g) => (
-                    <tr key={g.id}>
-                      <td>
-                        <span style={{ fontWeight: "700", color: "#0f172a" }}>{g.nama}</span>
+                  filteredGedung.map((g, index) => (
+                    <tr
+                      key={g.id}
+                      style={{
+                        borderBottom: index === filteredGedung.length - 1 ? "none" : "1px solid #f2f2f7",
+                        transition: "background-color 0.1s ease"
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f9f9fb")}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                    >
+                      <td style={{ padding: "14px 20px" }}>
+                        <span style={{ fontWeight: "600", color: "#1c1c1e" }}>{g.nama}</span>
                       </td>
-                      <td>{g.lat}</td>
-                      <td>{g.lng}</td>
-                      <td>{g.radius}</td>
-                      <td>
-                        <span style={{ fontWeight: "600", color: "#2563eb" }}>{g.fasil}</span>
+                      <td style={{ padding: "14px 20px", color: "#8e8e93" }}>{g.lat}</td>
+                      <td style={{ padding: "14px 20px", color: "#8e8e93" }}>{g.lng}</td>
+                      <td style={{ padding: "14px 20px" }}>
+                        <span style={{ fontWeight: "600", color: "#007aff", backgroundColor: "rgba(0, 122, 255, 0.08)", padding: "3px 8px", borderRadius: "6px", fontSize: "12px" }}>
+                          {g.radius}
+                        </span>
                       </td>
-                      <td style={{ textAlign: "center" }}>
-                        <div style={{ display: "inline-flex", gap: "8px" }}>
+                      <td style={{ padding: "14px 20px", color: "#1c1c1e", fontWeight: "500" }}>
+                        {g.fasil}
+                      </td>
+                      <td style={{ padding: "14px 20px", textAlign: "right" }}>
+                        <div style={{ display: "inline-flex", gap: "6px" }}>
                           <button
-                            style={{
-                              border: "none",
-                              background: "none",
-                              color: "#64748b",
-                              cursor: "pointer",
-                              padding: "4px"
-                            }}
+                            style={{ border: "none", background: "none", color: "#8e8e93", cursor: "pointer", padding: "5px" }}
                             title="Edit Gedung"
                             onClick={() => handleOpenEditGedung(g)}
                           >
                             <Edit2 size={15} />
                           </button>
                           <button
-                            style={{
-                              border: "none",
-                              background: "none",
-                              color: "#ef4444",
-                              cursor: "pointer",
-                              padding: "4px"
-                            }}
+                            style={{ border: "none", background: "none", color: "#ff3b30", cursor: "pointer", padding: "5px" }}
                             title="Hapus Gedung"
                             onClick={() => handleDeleteGedung(g.id, g.nama)}
                           >
@@ -712,31 +719,39 @@ export default function MasterDataPage() {
 
         {/* 3.2 Lantai Table */}
         {activeSubTab === "lantai" && (
-          <div className="data-table-container">
-            <table className="asrama-data-table">
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "13.5px" }}>
               <thead>
-                <tr>
-                  <th>Gedung</th>
-                  <th>Lantai</th>
-                  <th>Total Kamar</th>
+                <tr style={{ backgroundColor: "#fafafc", borderBottom: "1px solid #e5e5ea", color: "#8e8e93", fontSize: "11.5px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  <th style={{ padding: "16px 20px" }}>Gedung</th>
+                  <th style={{ padding: "16px 20px" }}>Lantai</th>
+                  <th style={{ padding: "16px 20px" }}>Total Kamar</th>
                 </tr>
               </thead>
               <tbody>
                 {lantaiList.length === 0 ? (
                   <tr>
-                    <td colSpan={3} style={{ textAlign: "center", padding: "32px", color: "#94a3b8" }}>
+                    <td colSpan={3} style={{ textAlign: "center", padding: "48px 16px", color: "#8e8e93" }}>
                       Belum ada data lantai di database.
                     </td>
                   </tr>
                 ) : (
-                  lantaiList.map((l) => (
-                    <tr key={l.id}>
-                      <td>
-                        <span style={{ fontWeight: "700", color: "#0f172a" }}>{l.gedung}</span>
+                  lantaiList.map((l, index) => (
+                    <tr
+                      key={l.id}
+                      style={{
+                        borderBottom: index === lantaiList.length - 1 ? "none" : "1px solid #f2f2f7",
+                        transition: "background-color 0.1s ease"
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f9f9fb")}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                    >
+                      <td style={{ padding: "14px 20px", fontWeight: "600", color: "#1c1c1e" }}>
+                        {l.gedung}
                       </td>
-                      <td>{l.nomor}</td>
-                      <td>
-                        <span className="badge-status-blue" style={{ fontSize: "11px", padding: "2px 8px" }}>
+                      <td style={{ padding: "14px 20px", color: "#1c1c1e" }}>{l.nomor}</td>
+                      <td style={{ padding: "14px 20px" }}>
+                        <span style={{ fontWeight: "600", color: "#007aff", backgroundColor: "rgba(0, 122, 255, 0.08)", padding: "3px 8px", borderRadius: "6px", fontSize: "12px" }}>
                           {l.kamar}
                         </span>
                       </td>
@@ -750,50 +765,60 @@ export default function MasterDataPage() {
 
         {/* 3.3 Kamar Table */}
         {activeSubTab === "kamar" && (
-          <div className="data-table-container">
-            <table className="asrama-data-table">
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "13.5px" }}>
               <thead>
-                <tr>
-                  <th>Nomor Kamar</th>
-                  <th>Gedung</th>
-                  <th>Lantai</th>
-                  <th>Kapasitas</th>
-                  <th>Status</th>
-                  <th style={{ textAlign: "center" }}>Aksi</th>
+                <tr style={{ backgroundColor: "#fafafc", borderBottom: "1px solid #e5e5ea", color: "#8e8e93", fontSize: "11.5px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  <th style={{ padding: "16px 20px" }}>Nomor Kamar</th>
+                  <th style={{ padding: "16px 20px" }}>Gedung</th>
+                  <th style={{ padding: "16px 20px" }}>Lantai</th>
+                  <th style={{ padding: "16px 20px" }}>Kapasitas</th>
+                  <th style={{ padding: "16px 20px" }}>Status</th>
+                  <th style={{ padding: "16px 20px", textAlign: "right" }}>Aksi</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredKamar.length === 0 ? (
                   <tr>
-                    <td colSpan={6} style={{ textAlign: "center", padding: "32px", color: "#94a3b8" }}>
+                    <td colSpan={6} style={{ textAlign: "center", padding: "48px 16px", color: "#8e8e93" }}>
                       Belum ada data kamar di database.
                     </td>
                   </tr>
                 ) : (
-                  filteredKamar.map((k) => (
-                    <tr key={k.id}>
-                      <td>
-                        <span style={{ fontWeight: "700", color: "#0f172a" }}>{k.nomor}</span>
+                  filteredKamar.map((k, index) => (
+                    <tr
+                      key={k.id}
+                      style={{
+                        borderBottom: index === filteredKamar.length - 1 ? "none" : "1px solid #f2f2f7",
+                        transition: "background-color 0.1s ease"
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f9f9fb")}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                    >
+                      <td style={{ padding: "14px 20px" }}>
+                        <span style={{ fontWeight: "600", color: "#007aff", backgroundColor: "rgba(0, 122, 255, 0.08)", padding: "3px 8px", borderRadius: "6px", fontSize: "12px" }}>
+                          {k.nomor}
+                        </span>
                       </td>
-                      <td>{k.gedung}</td>
-                      <td>Lantai {k.lantai}</td>
-                      <td>{k.kapasitas}</td>
-                      <td>
-                        <span className="badge-status-blue" style={{ fontSize: "11px", padding: "2px 8px" }}>
+                      <td style={{ padding: "14px 20px", color: "#1c1c1e", fontWeight: "500" }}>{k.gedung}</td>
+                      <td style={{ padding: "14px 20px", color: "#8e8e93" }}>Lantai {k.lantai}</td>
+                      <td style={{ padding: "14px 20px", color: "#8e8e93" }}>{k.kapasitas}</td>
+                      <td style={{ padding: "14px 20px" }}>
+                        <span style={{ backgroundColor: "rgba(52, 199, 89, 0.12)", color: "#34c759", fontSize: "12px", fontWeight: "600", padding: "4px 10px", borderRadius: "12px" }}>
                           {k.terisi}
                         </span>
                       </td>
-                      <td style={{ textAlign: "center" }}>
-                        <div style={{ display: "inline-flex", gap: "8px" }}>
+                      <td style={{ padding: "14px 20px", textAlign: "right" }}>
+                        <div style={{ display: "inline-flex", gap: "6px" }}>
                           <button
-                            style={{ border: "none", background: "none", color: "#64748b", cursor: "pointer", padding: "4px" }}
+                            style={{ border: "none", background: "none", color: "#8e8e93", cursor: "pointer", padding: "5px" }}
                             title="Edit Kamar"
                             onClick={() => handleOpenEditKamar(k)}
                           >
                             <Edit2 size={15} />
                           </button>
                           <button
-                            style={{ border: "none", background: "none", color: "#ef4444", cursor: "pointer", padding: "4px" }}
+                            style={{ border: "none", background: "none", color: "#ff3b30", cursor: "pointer", padding: "5px" }}
                             title="Hapus Kamar"
                             onClick={() => handleDeleteKamar(k.nomor)}
                           >
@@ -808,40 +833,58 @@ export default function MasterDataPage() {
             </table>
           </div>
         )}
-
-        {/* Table Footer */}
-        <div className="table-pagination-row">
-          <div style={{ fontSize: "12.5px", color: "#64748b" }}>
-            Menampilkan {activeSubTab === "gedung" ? filteredGedung.length : activeSubTab === "lantai" ? lantaiList.length : filteredKamar.length} data
-          </div>
-        </div>
       </div>
 
-      {/* 4. MODAL: Tambah / Edit Gedung Lengkap dengan Peta Asli & Struktur Kamar */}
+      {/* MODAL: Tambah / Edit Gedung */}
       {showModalGedung && (
-        <div className="modal-backdrop-overlay" onClick={() => setShowModalGedung(false)}>
-          <div className="modal-dialog-box" style={{ maxWidth: "640px", maxHeight: "90vh", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
-              <div>
-                <div style={{ fontSize: "11px", fontWeight: "800", color: "#2349d4", letterSpacing: "1px", textTransform: "uppercase" }}>
-                  DATA GEDUNG
-                </div>
-                <h3 style={{ fontSize: "18px", fontWeight: "800", color: "#0f172a", margin: "2px 0 0 0" }}>
-                  {editingGedung ? "Edit Data Gedung" : "Tambah Gedung Baru"}
-                </h3>
-              </div>
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.35)",
+            backdropFilter: "blur(6px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 100,
+            padding: "20px",
+            fontFamily: fontStack
+          }}
+          onClick={() => setShowModalGedung(false)}
+        >
+          <div
+            style={{
+              backgroundColor: "#ffffff",
+              borderRadius: "20px",
+              width: "100%",
+              maxWidth: "620px",
+              maxHeight: "90vh",
+              overflowY: "auto",
+              padding: "26px",
+              boxShadow: "0 20px 40px rgba(0, 0, 0, 0.15)",
+              border: "1px solid rgba(0, 0, 0, 0.05)"
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px" }}>
+              <h3 style={{ fontSize: "18px", fontWeight: "700", color: "#1c1c1e", margin: 0 }}>
+                {editingGedung ? "Edit Data Gedung" : "Tambah Gedung Baru"}
+              </h3>
               <button
                 onClick={() => setShowModalGedung(false)}
-                style={{ border: "none", background: "#f1f5f9", borderRadius: "8px", width: "28px", height: "28px", cursor: "pointer" }}
+                style={{ border: "none", background: "none", color: "#8e8e93", cursor: "pointer", padding: "4px" }}
               >
-                <X size={16} color="#64748b" />
+                <X size={18} />
               </button>
             </div>
 
             <form onSubmit={handleSaveGedung} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1.2fr", gap: "12px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
                 <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: "700", color: "#334155", marginBottom: "4px" }}>
+                  <label style={{ display: "block", fontSize: "12.5px", fontWeight: "600", color: "#1c1c1e", marginBottom: "4px" }}>
                     Nama Gedung *
                   </label>
                   <input
@@ -850,124 +893,105 @@ export default function MasterDataPage() {
                     value={formGedung.nama}
                     onChange={(e) => setFormGedung({ ...formGedung, nama: e.target.value })}
                     placeholder="Contoh: Gedung C"
-                    style={{
-                      width: "100%",
-                      height: "38px",
-                      padding: "0 12px",
-                      borderRadius: "8px",
-                      border: "1px solid #e2e8f0",
-                      backgroundColor: "#f8fafc",
-                      fontSize: "12.5px",
-                      boxSizing: "border-box"
-                    }}
+                    style={{ width: "100%", padding: "9px 12px", borderRadius: "10px", border: "1px solid #e5e5ea", backgroundColor: "#ffffff", fontSize: "13px", fontWeight: "400", boxSizing: "border-box", outline: "none", color: "#1c1c1e", fontFamily: fontStack }}
                   />
                 </div>
 
                 <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: "700", color: "#334155", marginBottom: "4px" }}>
-                    Fasilitator Pengelola (Bisa Diketik / Dipilih) *
+                  <label style={{ display: "block", fontSize: "12.5px", fontWeight: "600", color: "#1c1c1e", marginBottom: "4px" }}>
+                    Fasilitator Pengelola * (Bisa Pilih &gt; 1)
                   </label>
-                  <input
-                    type="text"
-                    list="fasil-list-options"
-                    required
-                    value={formGedung.namaFasil}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      const matched = fasilOptions.find((f) => f.nama.toLowerCase() === val.toLowerCase());
-                      setFormGedung({
-                        ...formGedung,
-                        namaFasil: val,
-                        idUser: matched ? String(matched.idUser) : formGedung.idUser
-                      });
-                    }}
-                    placeholder="Ketik nama fasil..."
-                    style={{
-                      width: "100%",
-                      height: "38px",
-                      padding: "0 12px",
-                      borderRadius: "8px",
-                      border: "1px solid #e2e8f0",
-                      backgroundColor: "#f8fafc",
-                      fontSize: "12.5px",
-                      boxSizing: "border-box"
-                    }}
-                  />
-                  <datalist id="fasil-list-options">
-                    {fasilOptions.map((f) => (
-                      <option key={f.idUser} value={f.nama}>
-                        {f.nama} ({f.role ? f.role.toUpperCase() : "FASIL"})
-                      </option>
-                    ))}
-                  </datalist>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", padding: "8px 10px", borderRadius: "10px", border: "1px solid #e5e5ea", backgroundColor: "#ffffff", minHeight: "38px", maxHeight: "110px", overflowY: "auto", boxSizing: "border-box" }}>
+                    {fasilOptions.length === 0 ? (
+                      <span style={{ fontSize: "12px", color: "#8e8e93", fontWeight: "400" }}>Memuat daftar fasil...</span>
+                    ) : (
+                      fasilOptions.map((f) => {
+                        const isSelected = selectedFasils.includes(f.nama);
+                        return (
+                          <button
+                            key={f.idUser}
+                            type="button"
+                            onClick={() => {
+                              if (isSelected) {
+                                setSelectedFasils(selectedFasils.filter((name) => name !== f.nama));
+                              } else {
+                                setSelectedFasils([...selectedFasils, f.nama]);
+                              }
+                            }}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                              padding: "4px 9px",
+                              borderRadius: "7px",
+                              fontSize: "12px",
+                              fontWeight: "400",
+                              cursor: "pointer",
+                              border: isSelected ? "1px solid #007aff" : "1px solid #e5e5ea",
+                              backgroundColor: isSelected ? "#007aff" : "#f2f2f7",
+                              color: isSelected ? "#ffffff" : "#1c1c1e",
+                              transition: "all 0.15s ease"
+                            }}
+                          >
+                            {isSelected && <Check size={11} strokeWidth={2.5} />}
+                            <span>{f.nama}</span>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                  {selectedFasils.length > 0 && (
+                    <div style={{ fontSize: "11.5px", color: "#007aff", fontWeight: "400", marginTop: "3px" }}>
+                      Fasilitator dipilih: {selectedFasils.join(", ")}
+                    </div>
+                  )}
                 </div>
               </div>
 
               {/* Sekaligus Buat Struktur Lantai & Kamar */}
-              <div style={{ backgroundColor: "#f8fafc", borderRadius: "10px", padding: "12px 14px", border: "1px solid #e2e8f0" }}>
-                <div style={{ fontSize: "12.5px", fontWeight: "800", color: "#0f172a", marginBottom: "2px" }}>
-                  🏢 Struktur Lantai & Kamar Sekaligus
+              <div style={{ backgroundColor: "#f9fafb", borderRadius: "12px", padding: "14px 16px", border: "1px solid #e5e5ea" }}>
+                <div style={{ fontSize: "13px", fontWeight: "600", color: "#1c1c1e", marginBottom: "2px" }}>
+                  Struktur Lantai & Kamar Otomatis
                 </div>
-                <p style={{ fontSize: "11px", color: "#64748b", margin: "0 0 8px 0" }}>
-                  Tentukan jumlah lantai dan kamar agar database otomatis membuat kamar untuk gedung ini.
+                <p style={{ fontSize: "12px", color: "#8e8e93", margin: "0 0 10px 0", fontWeight: "400" }}>
+                  Tentukan jumlah lantai dan kamar agar sistem otomatis membuat kamar untuk gedung ini.
                 </p>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
                   <div>
-                    <label style={{ display: "block", fontSize: "11px", fontWeight: "700", color: "#475569", marginBottom: "3px" }}>
+                    <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "#1c1c1e", marginBottom: "4px" }}>
                       Jumlah Lantai
                     </label>
                     <input
                       type="number"
                       min="1"
                       max="10"
+                      placeholder="Contoh: 3"
                       value={formGedung.jumlahLantai}
                       onChange={(e) => setFormGedung({ ...formGedung, jumlahLantai: e.target.value })}
-                      style={{
-                        width: "100%",
-                        height: "34px",
-                        padding: "0 10px",
-                        borderRadius: "8px",
-                        border: "1px solid #cbd5e1",
-                        backgroundColor: "#ffffff",
-                        fontSize: "12px",
-                        boxSizing: "border-box"
-                      }}
+                      style={{ width: "100%", padding: "8px 10px", borderRadius: "8px", border: "1px solid #e5e5ea", backgroundColor: "#ffffff", fontSize: "13px", fontWeight: "400", boxSizing: "border-box", color: "#1c1c1e" }}
                     />
                   </div>
                   <div>
-                    <label style={{ display: "block", fontSize: "11px", fontWeight: "700", color: "#475569", marginBottom: "3px" }}>
+                    <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "#1c1c1e", marginBottom: "4px" }}>
                       Kamar per Lantai
                     </label>
                     <input
                       type="number"
                       min="0"
                       max="30"
+                      placeholder="Contoh: 4"
                       value={formGedung.kamarPerLantai}
                       onChange={(e) => setFormGedung({ ...formGedung, kamarPerLantai: e.target.value })}
-                      style={{
-                        width: "100%",
-                        height: "34px",
-                        padding: "0 10px",
-                        borderRadius: "8px",
-                        border: "1px solid #cbd5e1",
-                        backgroundColor: "#ffffff",
-                        fontSize: "12px",
-                        boxSizing: "border-box"
-                      }}
+                      style={{ width: "100%", padding: "8px 10px", borderRadius: "8px", border: "1px solid #e5e5ea", backgroundColor: "#ffffff", fontSize: "13px", fontWeight: "400", boxSizing: "border-box", color: "#1c1c1e" }}
                     />
                   </div>
                 </div>
-                {parseInt(formGedung.jumlahLantai) > 0 && parseInt(formGedung.kamarPerLantai) > 0 && (
-                  <div style={{ marginTop: "6px", fontSize: "11.5px", color: "#2563eb", fontWeight: "700" }}>
-                    ✓ Total {parseInt(formGedung.jumlahLantai) * parseInt(formGedung.kamarPerLantai)} kamar akan otomatis di-generate di database.
-                  </div>
-                )}
               </div>
 
               {/* Peta Asli Leaflet OpenStreetMap */}
               <div>
-                <label style={{ display: "block", fontSize: "12px", fontWeight: "700", color: "#334155", marginBottom: "6px" }}>
-                  Peta Lokasi & Geofence Gedung (OpenStreetMap)
+                <label style={{ display: "block", fontSize: "12.5px", fontWeight: "600", color: "#1c1c1e", marginBottom: "6px" }}>
+                  Peta Lokasi & Geofence (OpenStreetMap)
                 </label>
                 <BuildingMapPicker
                   lat={formGedung.lat}
@@ -980,38 +1004,41 @@ export default function MasterDataPage() {
               {/* Koordinat & Radius Inputs */}
               <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1.2fr 1fr", gap: "10px" }}>
                 <div>
-                  <label style={{ display: "block", fontSize: "11px", fontWeight: "700", color: "#64748b", marginBottom: "3px" }}>
+                  <label style={{ display: "block", fontSize: "11px", fontWeight: "600", color: "#8e8e93", marginBottom: "3px" }}>
                     LATITUDE
                   </label>
                   <input
                     type="text"
+                    placeholder="Contoh: -0.914400"
                     value={formGedung.lat}
                     onChange={(e) => setFormGedung({ ...formGedung, lat: e.target.value })}
-                    style={{ width: "100%", height: "34px", padding: "0 8px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "12px", boxSizing: "border-box" }}
+                    style={{ width: "100%", padding: "8px 10px", borderRadius: "8px", border: "1px solid #e5e5ea", fontSize: "12px", fontWeight: "400", boxSizing: "border-box", backgroundColor: "#ffffff", color: "#1c1c1e" }}
                   />
                 </div>
                 <div>
-                  <label style={{ display: "block", fontSize: "11px", fontWeight: "700", color: "#64748b", marginBottom: "3px" }}>
+                  <label style={{ display: "block", fontSize: "11px", fontWeight: "600", color: "#8e8e93", marginBottom: "3px" }}>
                     LONGITUDE
                   </label>
                   <input
                     type="text"
+                    placeholder="Contoh: 100.460800"
                     value={formGedung.lng}
                     onChange={(e) => setFormGedung({ ...formGedung, lng: e.target.value })}
-                    style={{ width: "100%", height: "34px", padding: "0 8px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "12px", boxSizing: "border-box" }}
+                    style={{ width: "100%", padding: "8px 10px", borderRadius: "8px", border: "1px solid #e5e5ea", fontSize: "12px", fontWeight: "400", boxSizing: "border-box", backgroundColor: "#ffffff", color: "#1c1c1e" }}
                   />
                 </div>
                 <div>
-                  <label style={{ display: "block", fontSize: "11px", fontWeight: "700", color: "#64748b", marginBottom: "3px" }}>
+                  <label style={{ display: "block", fontSize: "11px", fontWeight: "600", color: "#8e8e93", marginBottom: "3px" }}>
                     RADIUS (METER)
                   </label>
                   <input
                     type="number"
                     min="10"
                     max="500"
+                    placeholder="Contoh: 100"
                     value={formGedung.radius}
                     onChange={(e) => setFormGedung({ ...formGedung, radius: e.target.value })}
-                    style={{ width: "100%", height: "34px", padding: "0 8px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "12px", boxSizing: "border-box" }}
+                    style={{ width: "100%", padding: "8px 10px", borderRadius: "8px", border: "1px solid #e5e5ea", fontSize: "12px", fontWeight: "400", boxSizing: "border-box", backgroundColor: "#ffffff", color: "#1c1c1e" }}
                   />
                 </div>
               </div>
@@ -1024,38 +1051,22 @@ export default function MasterDataPage() {
                   style={{
                     flex: 1,
                     height: "36px",
-                    backgroundColor: "#f0f6ff",
-                    border: "1px solid #bfdbfe",
-                    borderRadius: "8px",
-                    color: "#2349d4",
-                    fontSize: "12px",
-                    fontWeight: "700",
+                    backgroundColor: "rgba(0, 122, 255, 0.08)",
+                    border: "1px solid rgba(0, 122, 255, 0.2)",
+                    borderRadius: "10px",
+                    color: "#007aff",
+                    fontSize: "12.5px",
+                    fontWeight: "600",
                     cursor: "pointer",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    gap: "6px"
+                    gap: "6px",
+                    fontFamily: fontStack
                   }}
                 >
                   <Crosshair size={14} />
                   Gunakan Lokasi GPS Saya
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFormGedung((prev) => ({ ...prev, lat: "-0.914400", lng: "100.460800" }))}
-                  style={{
-                    padding: "0 14px",
-                    height: "36px",
-                    backgroundColor: "#f8fafc",
-                    border: "1px solid #e2e8f0",
-                    borderRadius: "8px",
-                    color: "#475569",
-                    fontSize: "12px",
-                    fontWeight: "600",
-                    cursor: "pointer"
-                  }}
-                >
-                  Asrama Unand
                 </button>
               </div>
 
@@ -1064,15 +1075,15 @@ export default function MasterDataPage() {
                 <button
                   type="button"
                   onClick={() => setShowModalGedung(false)}
-                  style={{ padding: "8px 16px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#ffffff", cursor: "pointer", fontSize: "12.5px", fontWeight: "600" }}
+                  style={{ padding: "9px 18px", borderRadius: "10px", border: "none", backgroundColor: "#f2f2f7", color: "#8e8e93", cursor: "pointer", fontSize: "13px", fontWeight: "600", fontFamily: fontStack }}
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  style={{ padding: "8px 22px", borderRadius: "8px", border: "none", backgroundColor: "#2349d4", color: "#ffffff", cursor: "pointer", fontSize: "12.5px", fontWeight: "700" }}
+                  style={{ padding: "9px 22px", borderRadius: "10px", border: "none", backgroundColor: "#007aff", color: "#ffffff", cursor: "pointer", fontSize: "13px", fontWeight: "600", fontFamily: fontStack, boxShadow: "0 2px 8px rgba(0, 122, 255, 0.3)" }}
                 >
-                  {editingGedung ? "Simpan Perubahan Gedung" : "Simpan Gedung & Kamar"}
+                  Simpan Perubahan
                 </button>
               </div>
             </form>
@@ -1080,38 +1091,61 @@ export default function MasterDataPage() {
         </div>
       )}
 
-      {/* 5. MODAL: Tambah / Edit Kamar */}
+      {/* MODAL: Tambah / Edit Kamar */}
       {showModalKamar && (
-        <div className="modal-backdrop-overlay" onClick={() => setShowModalKamar(false)}>
-          <div className="modal-dialog-box" style={{ maxWidth: "460px" }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
-              <div>
-                <div style={{ fontSize: "11px", fontWeight: "800", color: "#2349d4", letterSpacing: "1px", textTransform: "uppercase" }}>
-                  DATA KAMAR
-                </div>
-                <h3 style={{ fontSize: "18px", fontWeight: "800", color: "#0f172a", margin: "2px 0 0 0" }}>
-                  {editingKamar ? "Edit Kamar" : "Tambah Kamar"}
-                </h3>
-              </div>
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.35)",
+            backdropFilter: "blur(6px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 100,
+            padding: "20px",
+            fontFamily: fontStack
+          }}
+          onClick={() => setShowModalKamar(false)}
+        >
+          <div
+            style={{
+              backgroundColor: "#ffffff",
+              borderRadius: "20px",
+              width: "100%",
+              maxWidth: "460px",
+              padding: "26px",
+              boxShadow: "0 20px 40px rgba(0, 0, 0, 0.15)",
+              border: "1px solid rgba(0, 0, 0, 0.05)"
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px" }}>
+              <h3 style={{ fontSize: "18px", fontWeight: "700", color: "#1c1c1e", margin: 0 }}>
+                {editingKamar ? "Edit Kamar" : "Tambah Kamar"}
+              </h3>
               <button
                 onClick={() => setShowModalKamar(false)}
-                style={{ border: "none", background: "#f1f5f9", borderRadius: "8px", width: "28px", height: "28px", cursor: "pointer" }}
+                style={{ border: "none", background: "none", color: "#8e8e93", cursor: "pointer", padding: "4px" }}
               >
-                <X size={16} color="#64748b" />
+                <X size={18} />
               </button>
             </div>
 
             <form onSubmit={handleSaveKamar} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
                 <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: "700", color: "#334155", marginBottom: "4px" }}>
+                  <label style={{ display: "block", fontSize: "12.5px", fontWeight: "600", color: "#1c1c1e", marginBottom: "4px" }}>
                     Gedung *
                   </label>
                   <select
                     value={formKamar.idGedung}
                     onChange={(e) => setFormKamar({ ...formKamar, idGedung: e.target.value })}
                     required
-                    style={{ width: "100%", height: "38px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12.5px" }}
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: "10px", border: "1px solid #e5e5ea", backgroundColor: "#f2f2f7", fontSize: "13px", outline: "none", color: "#1c1c1e", fontFamily: fontStack }}
                   >
                     <option value="">-- Pilih Gedung --</option>
                     {gedungList.map((g) => (
@@ -1121,7 +1155,7 @@ export default function MasterDataPage() {
                 </div>
 
                 <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: "700", color: "#334155", marginBottom: "4px" }}>
+                  <label style={{ display: "block", fontSize: "12.5px", fontWeight: "600", color: "#1c1c1e", marginBottom: "4px" }}>
                     Lantai *
                   </label>
                   <input
@@ -1131,13 +1165,13 @@ export default function MasterDataPage() {
                     value={formKamar.lantai}
                     onChange={(e) => setFormKamar({ ...formKamar, lantai: e.target.value })}
                     placeholder="Contoh: 1"
-                    style={{ width: "100%", height: "38px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12.5px", boxSizing: "border-box" }}
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: "10px", border: "1px solid #e5e5ea", backgroundColor: "#f2f2f7", fontSize: "13px", boxSizing: "border-box", outline: "none", color: "#1c1c1e", fontFamily: fontStack }}
                   />
                 </div>
               </div>
 
               <div>
-                <label style={{ display: "block", fontSize: "12px", fontWeight: "700", color: "#334155", marginBottom: "4px" }}>
+                <label style={{ display: "block", fontSize: "12.5px", fontWeight: "600", color: "#1c1c1e", marginBottom: "4px" }}>
                   Nomor Kamar *
                 </label>
                 <input
@@ -1146,7 +1180,7 @@ export default function MasterDataPage() {
                   value={formKamar.noKamar}
                   onChange={(e) => setFormKamar({ ...formKamar, noKamar: e.target.value })}
                   placeholder="Contoh: A-101"
-                  style={{ width: "100%", height: "38px", padding: "0 12px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12.5px", boxSizing: "border-box" }}
+                  style={{ width: "100%", padding: "10px 12px", borderRadius: "10px", border: "1px solid #e5e5ea", backgroundColor: "#f2f2f7", fontSize: "13px", boxSizing: "border-box", outline: "none", color: "#1c1c1e", fontFamily: fontStack }}
                 />
               </div>
 
@@ -1154,15 +1188,15 @@ export default function MasterDataPage() {
                 <button
                   type="button"
                   onClick={() => setShowModalKamar(false)}
-                  style={{ padding: "8px 16px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#ffffff", cursor: "pointer", fontSize: "12.5px", fontWeight: "600" }}
+                  style={{ padding: "9px 18px", borderRadius: "10px", border: "none", backgroundColor: "#f2f2f7", color: "#8e8e93", cursor: "pointer", fontSize: "13px", fontWeight: "600", fontFamily: fontStack }}
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  style={{ padding: "8px 20px", borderRadius: "8px", border: "none", backgroundColor: "#2349d4", color: "#ffffff", cursor: "pointer", fontSize: "12.5px", fontWeight: "700" }}
+                  style={{ padding: "9px 22px", borderRadius: "10px", border: "none", backgroundColor: "#007aff", color: "#ffffff", cursor: "pointer", fontSize: "13px", fontWeight: "600", fontFamily: fontStack, boxShadow: "0 2px 8px rgba(0, 122, 255, 0.3)" }}
                 >
-                  {editingKamar ? "Simpan Perubahan Kamar" : "Simpan Kamar"}
+                  Simpan Perubahan
                 </button>
               </div>
             </form>

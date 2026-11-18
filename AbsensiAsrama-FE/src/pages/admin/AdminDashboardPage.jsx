@@ -6,12 +6,15 @@ import {
   DoorClosed,
   Percent,
   RotateCw,
-  ChevronRight
+  ChevronRight,
+  Clock
 } from "lucide-react";
-import { getStats, getPresensi } from "../../services/api";
+import { getStats, getPresensi, getSessionSettings } from "../../services/api";
+import { getActiveSessionConfig } from "../../utils/asramaConfig";
 
-export default function AdminDashboardPage({ setActiveTab }) {
+export default function AdminDashboardPage({ setActiveTab, user }) {
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [sessionConfig, setSessionConfig] = useState(getActiveSessionConfig());
   const [stats, setStats] = useState({
     totalPenghuni: 0,
     totalFasil: 0,
@@ -59,11 +62,61 @@ export default function AdminDashboardPage({ setActiveTab }) {
 
   useEffect(() => {
     loadStats();
+
+    // Load active session hours
+    async function loadSession() {
+      try {
+        const settings = await getSessionSettings();
+        if (settings) setSessionConfig(settings);
+      } catch {}
+    }
+    loadSession();
+
+    // Listen for live updates from Fasil & cross-tab changes
+    const handleSessionUpdated = (e) => {
+      if (e?.detail) setSessionConfig(e.detail);
+    };
+
+    const handleStorageChange = (e) => {
+      if (e.key === "mynava_session_settings" && e.newValue) {
+        try {
+          setSessionConfig(JSON.parse(e.newValue));
+        } catch {}
+      }
+    };
+
+    const handleFocus = async () => {
+      try {
+        const latest = await getSessionSettings();
+        if (latest) setSessionConfig(latest);
+      } catch {}
+    };
+
+    const intervalId = setInterval(async () => {
+      try {
+        const latest = await getSessionSettings();
+        if (latest) setSessionConfig(latest);
+      } catch {}
+    }, 8000);
+
+    window.addEventListener("mynava_session_updated", handleSessionUpdated);
+    window.addEventListener("storage", handleStorageChange);
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener("mynava_session_updated", handleSessionUpdated);
+      window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener("focus", handleFocus);
+    };
   }, []);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await loadStats();
+    await Promise.all([
+      loadStats(),
+      getSessionSettings().then((s) => s && setSessionConfig(s))
+    ]);
     setTimeout(() => {
       setIsRefreshing(false);
     }, 400);
@@ -72,72 +125,94 @@ export default function AdminDashboardPage({ setActiveTab }) {
   const statCards = [
     {
       id: "penghuni",
-      label: "Penghuni Aktif",
+      label: "MAHASISWA AKTIF",
       value: String(stats.totalPenghuni),
       icon: Users,
-      tab: "data-penghuni"
+      tab: "data-penghuni",
+      color: "#007aff"
     },
     {
       id: "fasil",
-      label: "Fasil Aktif",
+      label: "FASIL AKTIF",
       value: String(stats.totalFasil),
       icon: UserCheck,
-      tab: "data-fasil"
+      tab: "data-fasil",
+      color: "#34c759"
     },
     {
       id: "gedung",
-      label: "Gedung",
+      label: "TOTAL GEDUNG",
       value: String(stats.totalGedung),
       icon: Building2,
-      tab: "master-data"
+      tab: "master-data",
+      color: "#5856d6"
     },
     {
       id: "kamar",
-      label: "Kamar",
+      label: "TOTAL KAMAR",
       value: String(stats.totalKamar),
       icon: DoorClosed,
-      tab: "master-data"
+      tab: "master-data",
+      color: "#ff9500"
     },
     {
       id: "kehadiran",
-      label: "Kehadiran Hari Ini",
+      label: "KEHADIRAN HARI INI",
       value: `${stats.attendanceRate}%`,
       icon: Percent,
-      tab: "rekapitulasi"
+      tab: "rekapitulasi",
+      color: "#007aff"
     }
   ];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-      {/* Header Row */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: "24px",
+        fontFamily:
+          '-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Inter", system-ui, sans-serif',
+        color: "#1c1c1e"
+      }}
+    >
+      {/* 1. Header Row */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: "14px",
+          padding: "4px 2px"
+        }}
+      >
         <div>
-          <div
-            style={{
-              fontSize: "11px",
-              fontWeight: "800",
-              color: "#2349d4",
-              letterSpacing: "1.2px",
-              textTransform: "uppercase",
-              marginBottom: "4px"
-            }}
-          >
-            RINGKASAN SISTEM
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <h1
+              style={{
+                fontSize: "26px",
+                fontWeight: "700",
+                color: "#1c1c1e",
+                letterSpacing: "-0.5px",
+                margin: 0
+              }}
+            >
+              Dashboard Administrator
+            </h1>
+            <span
+              style={{
+                backgroundColor: "#e5e5ea",
+                color: "#636366",
+                fontSize: "12px",
+                fontWeight: "600",
+                padding: "3px 10px",
+                borderRadius: "20px"
+              }}
+            >
+              Pusat Kontrol
+            </span>
           </div>
-          <h1
-            style={{
-              fontSize: "24px",
-              fontWeight: "800",
-              color: "#0f172a",
-              letterSpacing: "-0.4px",
-              margin: "0 0 4px 0"
-            }}
-          >
-            Dashboard Admin
-          </h1>
-          <p style={{ fontSize: "13.5px", color: "#64748b", margin: 0 }}>
-            Pantau operasional seluruh asrama dalam satu tampilan.
-          </p>
         </div>
 
         <button
@@ -145,26 +220,104 @@ export default function AdminDashboardPage({ setActiveTab }) {
           onClick={handleRefresh}
           style={{
             backgroundColor: "#ffffff",
-            border: "1px solid #e2e8f0",
-            borderRadius: "10px",
-            padding: "8px 16px",
-            fontSize: "12.5px",
+            border: "1px solid #e5e5ea",
+            borderRadius: "12px",
+            padding: "9px 16px",
+            fontSize: "13px",
             fontWeight: "600",
-            color: "#334155",
+            color: "#1c1c1e",
             cursor: "pointer",
             display: "inline-flex",
             alignItems: "center",
             gap: "6px",
-            boxShadow: "0 1px 2px rgba(0,0,0,0.03)"
+            boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
+            transition: "all 0.15s ease"
           }}
         >
-          <RotateCw size={14} className={isRefreshing ? "animate-spin" : ""} />
+          <RotateCw size={14} className={isRefreshing ? "animate-spin" : ""} color="#007aff" />
           <span>Muat Ulang</span>
         </button>
       </div>
 
-      {/* 5 Stat Cards in a row */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "16px" }}>
+      {/* Real-Time Synchronized Presensi Session Schedule Card */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          backgroundColor: "#ffffff",
+          borderRadius: "18px",
+          padding: "16px 22px",
+          border: "1px solid rgba(0, 0, 0, 0.05)",
+          boxShadow: "0 2px 10px rgba(0, 0, 0, 0.02)",
+          flexWrap: "wrap",
+          gap: "14px"
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+          <div
+            style={{
+              width: "42px",
+              height: "42px",
+              borderRadius: "12px",
+              backgroundColor: "rgba(0, 122, 255, 0.1)",
+              color: "#007aff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center"
+            }}
+          >
+            <Clock size={22} />
+          </div>
+          <div>
+            <div
+              style={{
+                fontSize: "14.5px",
+                fontWeight: "700",
+                color: "#1c1c1e",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                flexWrap: "wrap"
+              }}
+            >
+              <span>Jadwal Sesi Presensi Asrama (Tersinkronisasi)</span>
+              <span
+                style={{
+                  fontSize: "11px",
+                  fontWeight: "600",
+                  padding: "2px 8px",
+                  borderRadius: "12px",
+                  backgroundColor: "rgba(52, 199, 89, 0.12)",
+                  color: "#34c759"
+                }}
+              >
+                Real-Time Aktif
+              </span>
+            </div>
+            <div style={{ fontSize: "12.5px", color: "#64748b", marginTop: "4px" }}>
+              Sesi Subuh / Pagi:{" "}
+              <strong style={{ color: "#007aff" }}>
+                {sessionConfig.subuhStart} - {sessionConfig.subuhEnd} WIB
+              </strong>
+              {" • "}
+              Sesi Malam (Magrib & Isya):{" "}
+              <strong style={{ color: "#007aff" }}>
+                {sessionConfig.malamStart} - {sessionConfig.malamEnd} WIB
+              </strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 2. Stat Cards (Apple HIG Style) */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+          gap: "14px"
+        }}
+      >
         {statCards.map((card) => {
           const IconComponent = card.icon;
           return (
@@ -172,56 +325,55 @@ export default function AdminDashboardPage({ setActiveTab }) {
               key={card.id}
               style={{
                 backgroundColor: "#ffffff",
-                borderRadius: "16px",
-                padding: "18px 20px",
-                border: "1px solid #eef2f8",
-                boxShadow: "0 2px 8px -2px rgba(15, 23, 42, 0.04)",
+                borderRadius: "18px",
+                padding: "20px 22px",
+                border: "1px solid rgba(0,0,0,0.04)",
+                boxShadow: "0 2px 10px rgba(0,0,0,0.02)",
                 display: "flex",
                 flexDirection: "column",
                 justifyContent: "space-between"
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
+              <div>
                 <div
                   style={{
-                    width: "32px",
-                    height: "32px",
-                    borderRadius: "10px",
-                    backgroundColor: "#e8effe",
-                    color: "#2349d4",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center"
+                    fontSize: "11px",
+                    fontWeight: "600",
+                    color: "#8e8e93",
+                    letterSpacing: "0.5px",
+                    textTransform: "uppercase"
                   }}
                 >
-                  <IconComponent size={17} />
+                  {card.label}
                 </div>
-                <div>
-                  <div style={{ fontSize: "11px", fontWeight: "600", color: "#64748b" }}>
-                    {card.label}
-                  </div>
-                  <div style={{ fontSize: "22px", fontWeight: "800", color: "#0f172a" }}>
-                    {card.value}
-                  </div>
+                <div
+                  style={{
+                    fontSize: "26px",
+                    fontWeight: "700",
+                    color: "#1c1c1e",
+                    letterSpacing: "-0.5px",
+                    marginTop: "6px"
+                  }}
+                >
+                  {card.value}
                 </div>
               </div>
 
               <div
                 onClick={() => setActiveTab(card.tab)}
                 style={{
-                  fontSize: "11px",
+                  fontSize: "12px",
                   fontWeight: "600",
-                  color: "#94a3b8",
+                  color: "#007aff",
                   cursor: "pointer",
                   display: "inline-flex",
                   alignItems: "center",
-                  gap: "2px",
-                  borderTop: "1px solid #f8fafc",
-                  paddingTop: "8px",
-                  transition: "color 0.15s ease"
+                  gap: "3px",
+                  borderTop: "1px solid #f2f2f7",
+                  paddingTop: "10px",
+                  marginTop: "14px",
+                  transition: "opacity 0.15s ease"
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = "#2349d4")}
-                onMouseLeave={(e) => (e.currentTarget.style.color = "#94a3b8")}
               >
                 <span>Lihat detail</span>
                 <ChevronRight size={13} />
@@ -231,40 +383,37 @@ export default function AdminDashboardPage({ setActiveTab }) {
         })}
       </div>
 
-      {/* Chart Card: Tren Kehadiran 7 Hari */}
+      {/* 3. Chart Card: Tren Kehadiran 7 Hari */}
       <div
         style={{
           backgroundColor: "#ffffff",
           borderRadius: "18px",
           padding: "24px 28px",
-          border: "1px solid #eef2f8",
-          boxShadow: "0 2px 10px -2px rgba(15, 23, 42, 0.04)"
+          border: "1px solid rgba(0,0,0,0.04)",
+          boxShadow: "0 2px 10px rgba(0,0,0,0.02)"
         }}
       >
-        <div style={{ marginBottom: "28px" }}>
-          <h3 style={{ fontSize: "15px", fontWeight: "800", color: "#0f172a", margin: "0 0 4px 0" }}>
+        <div style={{ marginBottom: "20px" }}>
+          <h3 style={{ fontSize: "16px", fontWeight: "700", color: "#1c1c1e", margin: 0, letterSpacing: "-0.3px" }}>
             Tren Kehadiran 7 Hari
           </h3>
-          <p style={{ fontSize: "12.5px", color: "#64748b", margin: 0 }}>
-            Rata-rata kehadiran semua gedung
-          </p>
         </div>
 
-        {/* Bar Chart Visualization */}
+        {/* Bar Chart Visualization (Apple iOS Tint) */}
         <div
           style={{
-            height: "240px",
+            height: "220px",
             display: "flex",
             alignItems: "flex-end",
             justifyContent: "space-between",
-            padding: "0 40px",
+            padding: "0 30px",
             position: "relative"
           }}
         >
-          {/* Subtle horizontal grid lines */}
-          <div style={{ position: "absolute", left: "20px", right: "20px", top: "25%", height: "1px", backgroundColor: "#f8fafc" }} />
-          <div style={{ position: "absolute", left: "20px", right: "20px", top: "50%", height: "1px", backgroundColor: "#f8fafc" }} />
-          <div style={{ position: "absolute", left: "20px", right: "20px", top: "75%", height: "1px", backgroundColor: "#f8fafc" }} />
+          {/* Grid lines */}
+          <div style={{ position: "absolute", left: "20px", right: "20px", top: "25%", height: "1px", backgroundColor: "#f2f2f7" }} />
+          <div style={{ position: "absolute", left: "20px", right: "20px", top: "50%", height: "1px", backgroundColor: "#f2f2f7" }} />
+          <div style={{ position: "absolute", left: "20px", right: "20px", top: "75%", height: "1px", backgroundColor: "#f2f2f7" }} />
 
           {trendData.map((item, idx) => (
             <div
@@ -273,19 +422,17 @@ export default function AdminDashboardPage({ setActiveTab }) {
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
-                gap: "12px",
+                gap: "10px",
                 flex: "0 0 54px",
                 position: "relative",
                 zIndex: 2
               }}
             >
-              {/* Value indicator badge on hover */}
               <span
                 style={{
-                  fontSize: "10.5px",
+                  fontSize: "11px",
                   fontWeight: "700",
-                  color: "#2349d4",
-                  opacity: 0.9
+                  color: "#007aff"
                 }}
               >
                 {item.val}%
@@ -294,19 +441,19 @@ export default function AdminDashboardPage({ setActiveTab }) {
               {/* Bar */}
               <div
                 style={{
-                  width: "48px",
-                  height: `${item.val * 1.8}px`,
-                  backgroundColor: "#2349d4",
-                  borderRadius: "10px 10px 4px 4px",
+                  width: "44px",
+                  height: `${Math.max(6, item.val * 1.6)}px`,
+                  backgroundColor: "#007aff",
+                  borderRadius: "8px 8px 3px 3px",
                   transition: "all 0.2s ease",
                   cursor: "pointer"
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#1b3bb8")}
-                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#2349d4")}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#0056b3")}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#007aff")}
               />
 
               {/* Day label */}
-              <span style={{ fontSize: "12px", fontWeight: "600", color: "#64748b" }}>
+              <span style={{ fontSize: "12px", fontWeight: "600", color: "#8e8e93" }}>
                 {item.day}
               </span>
             </div>

@@ -1,4 +1,3 @@
-
 namespace AbsensiAsrama.Models;
 
 public class Perizinan
@@ -8,4 +7,5 @@ public class Perizinan
     public DateTime Tanggal { get; set; }
     public string Alasan { get; set; } = string.Empty;
     public string? FileBukti { get; set; }
+    public string Status { get; set; } = "Menunggu";
 }

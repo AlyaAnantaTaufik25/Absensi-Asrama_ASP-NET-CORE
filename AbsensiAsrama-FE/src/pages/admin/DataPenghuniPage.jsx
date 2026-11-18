@@ -9,6 +9,7 @@ import {
   ChevronDown
 } from "lucide-react";
 import { getUsers, createUser, updateUser, deleteUser, getGedung, getKamar } from "../../services/api";
+import { showToast } from "../../utils/toast";
 
 export default function DataPenghuniPage() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -66,7 +67,6 @@ export default function DataPenghuniPage() {
     getKamar().then((k) => { if (Array.isArray(k)) setAvailableKamar(k); });
   }, []);
 
-  // Form State
   const [formData, setFormData] = useState({
     nama: "",
     nim: "",
@@ -135,30 +135,30 @@ export default function DataPenghuniPage() {
         : await createUser(payload);
 
       if (res.ok) {
-        alert(editingPenghuni ? "Data penghuni berhasil diperbarui di database!" : "Data penghuni berhasil ditambahkan ke database!");
+        showToast(editingPenghuni ? "Data penghuni berhasil diperbarui!" : "Data penghuni berhasil ditambahkan!", "success");
         setShowModal(false);
         setEditingPenghuni(null);
         await loadPenghuni();
       } else {
-        alert("Gagal menyimpan penghuni: " + (res.data?.message || "Terjadi kesalahan."));
+        showToast("Gagal menyimpan penghuni: " + (res.data?.message || "Terjadi kesalahan."), "error");
       }
     } catch (err) {
-      alert("Error: " + err.message);
+      showToast("Error: " + err.message, "error");
     }
   };
 
   const handleDelete = async (id, nama) => {
-    if (!window.confirm(`Yakin ingin menghapus ${nama || "penghuni ini"} dari database MySQL?`)) return;
+    if (!window.confirm(`Yakin ingin menghapus ${nama || "penghuni ini"}?`)) return;
     try {
       const res = await deleteUser(id);
       if (res.ok) {
-        alert("Penghuni berhasil dihapus.");
+        showToast("Penghuni berhasil dihapus.", "success");
         await loadPenghuni();
       } else {
-        alert("Gagal menghapus penghuni: " + (res.data?.message || "Terjadi kesalahan."));
+        showToast("Gagal menghapus penghuni: " + (res.data?.message || "Terjadi kesalahan."), "error");
       }
     } catch (err) {
-      alert("Error: " + err.message);
+      showToast("Error: " + err.message, "error");
     }
   };
 
@@ -174,77 +174,75 @@ export default function DataPenghuniPage() {
     return matchSearch && matchGedung && matchStatus;
   });
 
+  const fontStack = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Inter", system-ui, sans-serif';
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "24px", fontFamily: fontStack }}>
       {/* 1. Header Row */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px" }}>
         <div>
-          <div
-            style={{
-              fontSize: "11px",
-              fontWeight: "800",
-              color: "#2349d4",
-              letterSpacing: "1.2px",
-              textTransform: "uppercase",
-              marginBottom: "4px"
-            }}
-          >
-            MANAJEMEN PENGHUNI
-          </div>
           <h1
             style={{
-              fontSize: "24px",
-              fontWeight: "800",
-              color: "#0f172a",
-              letterSpacing: "-0.4px",
-              margin: "0 0 4px 0"
+              fontSize: "26px",
+              fontWeight: "700",
+              color: "#1c1c1e",
+              letterSpacing: "-0.5px",
+              margin: 0
             }}
           >
-            Data Penghuni
+            Data Mahasiswa
           </h1>
-          <p style={{ fontSize: "13.5px", color: "#64748b", margin: 0 }}>
-            Kelola data dan akses seluruh penghuni asrama.
-          </p>
         </div>
 
         <button
           onClick={handleOpenTambah}
           style={{
-            backgroundColor: "#2349d4",
+            backgroundColor: "#007aff",
             border: "none",
             color: "#ffffff",
-            fontWeight: "700",
-            fontSize: "12.5px",
+            fontWeight: "600",
+            fontSize: "13px",
             padding: "9px 18px",
             borderRadius: "10px",
             display: "inline-flex",
             alignItems: "center",
             gap: "6px",
             cursor: "pointer",
-            boxShadow: "0 4px 14px -2px rgba(35, 73, 212, 0.4)"
+            boxShadow: "0 2px 8px rgba(0, 122, 255, 0.3)",
+            fontFamily: fontStack
           }}
         >
           <Plus size={15} />
-          Tambah
+          Tambah Mahasiswa
         </button>
       </div>
 
       {/* 2. Content Card with Filters and Table */}
-      <div className="content-card" style={{ padding: "20px 24px" }}>
+      <div
+        style={{
+          backgroundColor: "#ffffff",
+          borderRadius: "18px",
+          border: "1px solid rgba(0, 0, 0, 0.05)",
+          boxShadow: "0 2px 10px rgba(0, 0, 0, 0.03)",
+          overflow: "hidden"
+        }}
+      >
         {/* Filter Controls Row */}
-        <div style={{ display: "grid", gridTemplateColumns: "1.8fr 1fr 1fr 1fr 1fr", gap: "10px", marginBottom: "18px" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", padding: "18px 20px", borderBottom: "1px solid #f2f2f7" }}>
           {/* Search */}
-          <div style={{ position: "relative" }}>
-            <Search
-              size={15}
-              style={{
-                position: "absolute",
-                left: "12px",
-                top: "50%",
-                transform: "translateY(-50%)",
-                color: "#94a3b8"
-              }}
-            />
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              backgroundColor: "#f2f2f7",
+              borderRadius: "12px",
+              border: "1px solid #e5e5ea",
+              padding: "8px 14px",
+              flex: "1 1 240px"
+            }}
+          >
+            <Search size={15} color="#8e8e93" />
             <input
               type="text"
               value={searchQuery}
@@ -252,15 +250,12 @@ export default function DataPenghuniPage() {
               placeholder="Cari nama atau NIM..."
               style={{
                 width: "100%",
-                height: "38px",
-                paddingLeft: "36px",
-                paddingRight: "12px",
-                borderRadius: "10px",
-                border: "1px solid #e2e8f0",
-                backgroundColor: "#f8fafc",
-                fontSize: "12.5px",
+                border: "none",
+                background: "transparent",
+                fontSize: "13px",
                 outline: "none",
-                boxSizing: "border-box"
+                color: "#1c1c1e",
+                fontFamily: fontStack
               }}
             />
           </div>
@@ -269,7 +264,16 @@ export default function DataPenghuniPage() {
           <select
             value={gedungFilter}
             onChange={(e) => setGedungFilter(e.target.value)}
-            style={{ height: "38px", padding: "0 10px", borderRadius: "10px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12.5px" }}
+            style={{
+              padding: "8px 12px",
+              borderRadius: "12px",
+              border: "1px solid #e5e5ea",
+              backgroundColor: "#f2f2f7",
+              fontSize: "13px",
+              color: "#1c1c1e",
+              outline: "none",
+              fontFamily: fontStack
+            }}
           >
             <option value="Semua Gedung">Semua Asrama</option>
             <option value="Asrama Hijau">Asrama Hijau (Putra)</option>
@@ -281,25 +285,20 @@ export default function DataPenghuniPage() {
             <option value="Asrama RPX">Asrama RPX (Putri)</option>
           </select>
 
-          {/* Lantai */}
-          <select style={{ height: "38px", padding: "0 10px", borderRadius: "10px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12.5px" }}>
-            <option value="Semua">Semua Lantai</option>
-            <option value="1">Lantai 1</option>
-            <option value="2">Lantai 2</option>
-          </select>
-
-          {/* Kamar */}
-          <select style={{ height: "38px", padding: "0 10px", borderRadius: "10px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12.5px" }}>
-            <option value="Semua">Semua Kamar</option>
-            <option value="A-101">A-101</option>
-            <option value="B-104">B-104</option>
-          </select>
-
           {/* Status */}
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            style={{ height: "38px", padding: "0 10px", borderRadius: "10px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12.5px" }}
+            style={{
+              padding: "8px 12px",
+              borderRadius: "12px",
+              border: "1px solid #e5e5ea",
+              backgroundColor: "#f2f2f7",
+              fontSize: "13px",
+              color: "#1c1c1e",
+              outline: "none",
+              fontFamily: fontStack
+            }}
           >
             <option value="Semua Status">Semua Status</option>
             <option value="Aktif">Aktif</option>
@@ -308,75 +307,86 @@ export default function DataPenghuniPage() {
         </div>
 
         {/* Data Table */}
-        <div className="data-table-container">
-          <table className="asrama-data-table">
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "13.5px" }}>
             <thead>
-              <tr>
-                <th>Nama</th>
-                <th>NIM</th>
-                <th>JK</th>
-                <th>Gedung / Lantai / Kamar</th>
-                <th>Status</th>
-                <th style={{ textAlign: "center" }}>Aksi</th>
+              <tr style={{ backgroundColor: "#fafafc", borderBottom: "1px solid #e5e5ea", color: "#8e8e93", fontSize: "11.5px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                <th style={{ padding: "16px 20px" }}>Nama</th>
+                <th style={{ padding: "16px 20px" }}>NIM</th>
+                <th style={{ padding: "16px 20px" }}>JK</th>
+                <th style={{ padding: "16px 20px" }}>Gedung / Kamar</th>
+                <th style={{ padding: "16px 20px" }}>Status</th>
+                <th style={{ padding: "16px 20px", textAlign: "right" }}>Aksi</th>
               </tr>
             </thead>
             <tbody>
-              {filteredList.map((p) => (
-                <tr key={p.id}>
-                  <td>
-                    <div style={{ fontWeight: "700", color: "#0f172a" }}>{p.nama}</div>
-                    <div style={{ fontSize: "11px", color: "#64748b" }}>{p.email}</div>
+              {filteredList.map((p, index) => (
+                <tr
+                  key={p.id}
+                  style={{
+                    borderBottom: index === filteredList.length - 1 ? "none" : "1px solid #f2f2f7",
+                    transition: "background-color 0.1s ease"
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f9f9fb")}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                >
+                  <td style={{ padding: "14px 20px" }}>
+                    <div style={{ fontWeight: "600", color: "#1c1c1e" }}>{p.nama}</div>
+                    <div style={{ fontSize: "12px", color: "#8e8e93" }}>{p.email}</div>
                   </td>
-                  <td>
-                    <span style={{ fontWeight: "600", color: "#334155" }}>{p.nim}</span>
+                  <td style={{ padding: "14px 20px" }}>
+                    <span style={{ fontWeight: "500", color: "#1c1c1e" }}>{p.nim}</span>
                   </td>
-                  <td>
-                    <span style={{ fontWeight: "600", color: "#64748b" }}>{p.jk}</span>
+                  <td style={{ padding: "14px 20px" }}>
+                    <span style={{ color: "#8e8e93" }}>{p.jk}</span>
                   </td>
-                  <td>
-                    <span style={{ color: "#334155" }}>{p.lokasi}</span>
+                  <td style={{ padding: "14px 20px" }}>
+                    <span style={{ fontWeight: "600", color: "#007aff", backgroundColor: "rgba(0, 122, 255, 0.08)", padding: "3px 8px", borderRadius: "6px", fontSize: "12px" }}>
+                      {p.lokasi}
+                    </span>
                   </td>
-                  <td>
+                  <td style={{ padding: "14px 20px" }}>
                     {p.status === "Aktif" ? (
-                      <span className="badge-status-green" style={{ fontSize: "11px", padding: "2px 10px" }}>
-                        ● Aktif
+                      <span style={{ backgroundColor: "rgba(52, 199, 89, 0.12)", color: "#34c759", fontSize: "12px", fontWeight: "600", padding: "4px 10px", borderRadius: "12px" }}>
+                        Aktif
                       </span>
                     ) : (
-                      <span style={{ backgroundColor: "#f1f5f9", color: "#64748b", fontSize: "11px", fontWeight: "700", padding: "2px 10px", borderRadius: "9999px" }}>
-                        ● Nonaktif
+                      <span style={{ backgroundColor: "rgba(142, 142, 147, 0.12)", color: "#8e8e93", fontSize: "12px", fontWeight: "600", padding: "4px 10px", borderRadius: "12px" }}>
+                        Nonaktif
                       </span>
                     )}
                   </td>
-                  <td style={{ textAlign: "center" }}>
+                  <td style={{ padding: "14px 20px", textAlign: "right" }}>
                     <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
                       <button
                         onClick={() => setSelectedPenghuni(p)}
                         style={{
-                          backgroundColor: "#f0f6ff",
-                          border: "1px solid #bfdbfe",
-                          color: "#2349d4",
-                          fontSize: "11px",
-                          fontWeight: "700",
-                          padding: "4px 10px",
-                          borderRadius: "6px",
-                          cursor: "pointer"
+                          backgroundColor: "#f2f2f7",
+                          border: "1px solid #e5e5ea",
+                          color: "#1c1c1e",
+                          fontSize: "12px",
+                          fontWeight: "600",
+                          padding: "5px 10px",
+                          borderRadius: "8px",
+                          cursor: "pointer",
+                          fontFamily: fontStack
                         }}
                       >
-                        Lihat Detail
+                        Detail
                       </button>
                       <button
-                        style={{ border: "none", background: "none", color: "#64748b", cursor: "pointer", padding: "4px" }}
-                        title="Edit Penghuni"
+                        style={{ border: "none", background: "none", color: "#8e8e93", cursor: "pointer", padding: "5px" }}
+                        title="Edit Mahasiswa"
                         onClick={() => handleOpenEdit(p)}
                       >
-                        <Edit2 size={14} />
+                        <Edit2 size={15} />
                       </button>
                       <button
-                        style={{ border: "none", background: "none", color: "#ef4444", cursor: "pointer", padding: "4px" }}
-                        title="Hapus Penghuni"
+                        style={{ border: "none", background: "none", color: "#ff3b30", cursor: "pointer", padding: "5px" }}
+                        title="Hapus Mahasiswa"
                         onClick={() => handleDelete(p.id, p.nama)}
                       >
-                        <Trash2 size={14} />
+                        <Trash2 size={15} />
                       </button>
                     </div>
                   </td>
@@ -387,41 +397,61 @@ export default function DataPenghuniPage() {
         </div>
 
         {/* Footer */}
-        <div className="table-pagination-row">
-          <div style={{ fontSize: "12.5px", color: "#64748b" }}>
-            {filteredList.length} data · Halaman 1 dari 1
-          </div>
-          <div className="pagination-controls">
-            <button className="page-num-btn active">1</button>
+        <div style={{ padding: "14px 20px", borderTop: "1px solid #f2f2f7", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ fontSize: "13px", color: "#8e8e93" }}>
+            {filteredList.length} data mahasiswa terdaftar
           </div>
         </div>
       </div>
 
-      {/* 3. MODAL: Tambah Penghuni (Screenshot 4 Left) */}
+      {/* MODAL: Tambah / Edit Mahasiswa */}
       {showModal && (
-        <div className="modal-backdrop-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal-dialog-box" style={{ maxWidth: "560px" }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
-              <div>
-                <div style={{ fontSize: "11px", fontWeight: "800", color: "#2349d4", letterSpacing: "1px", textTransform: "uppercase" }}>
-                  DATA PENGHUNI
-                </div>
-                <h3 style={{ fontSize: "18px", fontWeight: "800", color: "#0f172a", margin: "2px 0 0 0" }}>
-                  {editingPenghuni ? "Edit Data Penghuni" : "Tambah Penghuni"}
-                </h3>
-              </div>
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.35)",
+            backdropFilter: "blur(6px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 100,
+            padding: "20px",
+            fontFamily: fontStack
+          }}
+          onClick={() => setShowModal(false)}
+        >
+          <div
+            style={{
+              backgroundColor: "#ffffff",
+              borderRadius: "20px",
+              width: "100%",
+              maxWidth: "540px",
+              padding: "26px",
+              boxShadow: "0 20px 40px rgba(0, 0, 0, 0.15)",
+              border: "1px solid rgba(0, 0, 0, 0.05)"
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px" }}>
+              <h3 style={{ fontSize: "18px", fontWeight: "700", color: "#1c1c1e", margin: 0 }}>
+                {editingPenghuni ? "Edit Data Mahasiswa" : "Tambah Mahasiswa"}
+              </h3>
               <button
                 onClick={() => setShowModal(false)}
-                style={{ border: "none", background: "#f1f5f9", borderRadius: "8px", width: "28px", height: "28px", cursor: "pointer" }}
+                style={{ border: "none", background: "none", cursor: "pointer", color: "#8e8e93", padding: "4px" }}
               >
-                <X size={16} color="#64748b" />
+                <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleSave} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            <form onSubmit={handleSave} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
                 <div>
-                  <label style={{ display: "block", fontSize: "11.5px", fontWeight: "700", color: "#334155", marginBottom: "3px" }}>
+                  <label style={{ display: "block", fontSize: "12.5px", fontWeight: "600", color: "#1c1c1e", marginBottom: "4px" }}>
                     Nama Lengkap *
                   </label>
                   <input
@@ -430,11 +460,11 @@ export default function DataPenghuniPage() {
                     value={formData.nama}
                     onChange={(e) => setFormData({ ...formData, nama: e.target.value })}
                     placeholder="Contoh: Alya Ananta"
-                    style={{ width: "100%", height: "36px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12px", boxSizing: "border-box" }}
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: "10px", border: "1px solid #e5e5ea", backgroundColor: "#f2f2f7", fontSize: "13px", boxSizing: "border-box", outline: "none", color: "#1c1c1e", fontFamily: fontStack }}
                   />
                 </div>
                 <div>
-                  <label style={{ display: "block", fontSize: "11.5px", fontWeight: "700", color: "#334155", marginBottom: "3px" }}>
+                  <label style={{ display: "block", fontSize: "12.5px", fontWeight: "600", color: "#1c1c1e", marginBottom: "4px" }}>
                     NIM *
                   </label>
                   <input
@@ -443,14 +473,14 @@ export default function DataPenghuniPage() {
                     value={formData.nim}
                     onChange={(e) => setFormData({ ...formData, nim: e.target.value })}
                     placeholder="Contoh: 2311523005"
-                    style={{ width: "100%", height: "36px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12px", boxSizing: "border-box" }}
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: "10px", border: "1px solid #e5e5ea", backgroundColor: "#f2f2f7", fontSize: "13px", boxSizing: "border-box", outline: "none", color: "#1c1c1e", fontFamily: fontStack }}
                   />
                 </div>
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
                 <div>
-                  <label style={{ display: "block", fontSize: "11.5px", fontWeight: "700", color: "#334155", marginBottom: "3px" }}>
+                  <label style={{ display: "block", fontSize: "12.5px", fontWeight: "600", color: "#1c1c1e", marginBottom: "4px" }}>
                     Asal
                   </label>
                   <input
@@ -458,17 +488,17 @@ export default function DataPenghuniPage() {
                     value={formData.asal}
                     onChange={(e) => setFormData({ ...formData, asal: e.target.value })}
                     placeholder="Contoh: Padang, Sumbar"
-                    style={{ width: "100%", height: "36px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12px", boxSizing: "border-box" }}
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: "10px", border: "1px solid #e5e5ea", backgroundColor: "#f2f2f7", fontSize: "13px", boxSizing: "border-box", outline: "none", color: "#1c1c1e", fontFamily: fontStack }}
                   />
                 </div>
                 <div>
-                  <label style={{ display: "block", fontSize: "11.5px", fontWeight: "700", color: "#334155", marginBottom: "3px" }}>
+                  <label style={{ display: "block", fontSize: "12.5px", fontWeight: "600", color: "#1c1c1e", marginBottom: "4px" }}>
                     Jenis Kelamin *
                   </label>
                   <select
                     value={formData.jk}
                     onChange={(e) => setFormData({ ...formData, jk: e.target.value })}
-                    style={{ width: "100%", height: "36px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12px" }}
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: "10px", border: "1px solid #e5e5ea", backgroundColor: "#f2f2f7", fontSize: "13px", outline: "none", color: "#1c1c1e", fontFamily: fontStack }}
                   >
                     <option value="L">Laki-laki (L)</option>
                     <option value="P">Perempuan (P)</option>
@@ -478,7 +508,7 @@ export default function DataPenghuniPage() {
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
                 <div>
-                  <label style={{ display: "block", fontSize: "11.5px", fontWeight: "700", color: "#334155", marginBottom: "3px" }}>
+                  <label style={{ display: "block", fontSize: "12.5px", fontWeight: "600", color: "#1c1c1e", marginBottom: "4px" }}>
                     Email *
                   </label>
                   <input
@@ -487,12 +517,12 @@ export default function DataPenghuniPage() {
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     placeholder="nama@email.com"
-                    style={{ width: "100%", height: "36px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12px", boxSizing: "border-box" }}
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: "10px", border: "1px solid #e5e5ea", backgroundColor: "#f2f2f7", fontSize: "13px", boxSizing: "border-box", outline: "none", color: "#1c1c1e", fontFamily: fontStack }}
                   />
                 </div>
                 <div>
-                  <label style={{ display: "block", fontSize: "11.5px", fontWeight: "700", color: "#334155", marginBottom: "3px" }}>
-                    Password {editingPenghuni ? "(Kosongkan jika tidak diubah)" : "*"}
+                  <label style={{ display: "block", fontSize: "12.5px", fontWeight: "600", color: "#1c1c1e", marginBottom: "4px" }}>
+                    Password {editingPenghuni ? "(Kosongkan jika tetap)" : "*"}
                   </label>
                   <input
                     type="password"
@@ -500,7 +530,7 @@ export default function DataPenghuniPage() {
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                     placeholder={editingPenghuni ? "Kosongkan jika tidak diubah" : "Min. 6 karakter"}
-                    style={{ width: "100%", height: "36px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12px", boxSizing: "border-box" }}
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: "10px", border: "1px solid #e5e5ea", backgroundColor: "#f2f2f7", fontSize: "13px", boxSizing: "border-box", outline: "none", color: "#1c1c1e", fontFamily: fontStack }}
                   />
                 </div>
               </div>
@@ -508,7 +538,7 @@ export default function DataPenghuniPage() {
               {/* Input Gedung, Lantai, dan Kamar */}
               <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr", gap: "10px" }}>
                 <div>
-                  <label style={{ display: "block", fontSize: "11.5px", fontWeight: "700", color: "#334155", marginBottom: "3px" }}>
+                  <label style={{ display: "block", fontSize: "12.5px", fontWeight: "600", color: "#1c1c1e", marginBottom: "4px" }}>
                     Gedung Asrama *
                   </label>
                   <select
@@ -522,7 +552,7 @@ export default function DataPenghuniPage() {
                         kamar: matchingKamars[0]?.noKamar || formData.kamar
                       });
                     }}
-                    style={{ width: "100%", height: "36px", padding: "0 8px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12px" }}
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: "10px", border: "1px solid #e5e5ea", backgroundColor: "#f2f2f7", fontSize: "13px", outline: "none", color: "#1c1c1e", fontFamily: fontStack }}
                   >
                     {availableGedung.length > 0 ? (
                       availableGedung.map((g) => (
@@ -543,13 +573,13 @@ export default function DataPenghuniPage() {
                 </div>
 
                 <div>
-                  <label style={{ display: "block", fontSize: "11.5px", fontWeight: "700", color: "#334155", marginBottom: "3px" }}>
+                  <label style={{ display: "block", fontSize: "12.5px", fontWeight: "600", color: "#1c1c1e", marginBottom: "4px" }}>
                     Lantai *
                   </label>
                   <select
                     value={formData.lantai}
                     onChange={(e) => setFormData({ ...formData, lantai: e.target.value })}
-                    style={{ width: "100%", height: "36px", padding: "0 8px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12px" }}
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: "10px", border: "1px solid #e5e5ea", backgroundColor: "#f2f2f7", fontSize: "13px", outline: "none", color: "#1c1c1e", fontFamily: fontStack }}
                   >
                     <option value="1">Lantai 1</option>
                     <option value="2">Lantai 2</option>
@@ -560,7 +590,7 @@ export default function DataPenghuniPage() {
                 </div>
 
                 <div>
-                  <label style={{ display: "block", fontSize: "11.5px", fontWeight: "700", color: "#334155", marginBottom: "3px" }}>
+                  <label style={{ display: "block", fontSize: "12.5px", fontWeight: "600", color: "#1c1c1e", marginBottom: "4px" }}>
                     Nomor Kamar *
                   </label>
                   <input
@@ -570,7 +600,7 @@ export default function DataPenghuniPage() {
                     value={formData.kamar}
                     onChange={(e) => setFormData({ ...formData, kamar: e.target.value })}
                     placeholder="Contoh: A-101"
-                    style={{ width: "100%", height: "36px", padding: "0 10px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc", fontSize: "12px", boxSizing: "border-box" }}
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: "10px", border: "1px solid #e5e5ea", backgroundColor: "#f2f2f7", fontSize: "13px", boxSizing: "border-box", outline: "none", color: "#1c1c1e", fontFamily: fontStack }}
                   />
                   <datalist id="kamar-list-dropdown">
                     {availableKamar.map((k) => (
@@ -582,19 +612,19 @@ export default function DataPenghuniPage() {
                 </div>
               </div>
 
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "12px" }}>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "14px" }}>
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  style={{ padding: "8px 16px", borderRadius: "8px", border: "1px solid #e2e8f0", backgroundColor: "#ffffff", cursor: "pointer", fontSize: "12.5px", fontWeight: "600" }}
+                  style={{ padding: "9px 18px", borderRadius: "10px", border: "none", backgroundColor: "#f2f2f7", color: "#8e8e93", cursor: "pointer", fontSize: "13px", fontWeight: "600", fontFamily: fontStack }}
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  style={{ padding: "8px 20px", borderRadius: "8px", border: "none", backgroundColor: "#2349d4", color: "#ffffff", cursor: "pointer", fontSize: "12.5px", fontWeight: "700" }}
+                  style={{ padding: "9px 22px", borderRadius: "10px", border: "none", backgroundColor: "#007aff", color: "#ffffff", cursor: "pointer", fontSize: "13px", fontWeight: "600", fontFamily: fontStack, boxShadow: "0 2px 8px rgba(0, 122, 255, 0.3)" }}
                 >
-                  {editingPenghuni ? "Simpan Perubahan" : "Simpan Penghuni"}
+                  {editingPenghuni ? "Simpan Perubahan" : "Simpan Mahasiswa"}
                 </button>
               </div>
             </form>
@@ -602,22 +632,67 @@ export default function DataPenghuniPage() {
         </div>
       )}
 
-      {/* Modal Detail Penghuni */}
+      {/* Modal Detail Mahasiswa */}
       {selectedPenghuni && (
-        <div className="modal-backdrop-overlay" onClick={() => setSelectedPenghuni(null)}>
-          <div className="modal-dialog-box" style={{ maxWidth: "420px" }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-              <div style={{ fontSize: "16px", fontWeight: "800", color: "#0f172a" }}>Detail Penghuni</div>
-              <button onClick={() => setSelectedPenghuni(null)} style={{ border: "none", background: "#f1f5f9", borderRadius: "6px", width: "26px", height: "26px", cursor: "pointer" }}>
-                <X size={15} color="#64748b" />
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.35)",
+            backdropFilter: "blur(6px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 100,
+            padding: "20px",
+            fontFamily: fontStack
+          }}
+          onClick={() => setSelectedPenghuni(null)}
+        >
+          <div
+            style={{
+              backgroundColor: "#ffffff",
+              borderRadius: "20px",
+              width: "100%",
+              maxWidth: "420px",
+              padding: "26px",
+              boxShadow: "0 20px 40px rgba(0, 0, 0, 0.15)",
+              border: "1px solid rgba(0, 0, 0, 0.05)"
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px" }}>
+              <div style={{ fontSize: "17px", fontWeight: "700", color: "#1c1c1e" }}>Detail Mahasiswa</div>
+              <button onClick={() => setSelectedPenghuni(null)} style={{ border: "none", background: "none", color: "#8e8e93", cursor: "pointer", padding: "4px" }}>
+                <X size={18} />
               </button>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px", fontSize: "13px" }}>
-              <div><strong>Nama:</strong> {selectedPenghuni.nama}</div>
-              <div><strong>NIM:</strong> {selectedPenghuni.nim}</div>
-              <div><strong>Email:</strong> {selectedPenghuni.email}</div>
-              <div><strong>Lokasi:</strong> {selectedPenghuni.lokasi}</div>
-              <div><strong>Status:</strong> {selectedPenghuni.status}</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px", fontSize: "13.5px" }}>
+              <div style={{ backgroundColor: "#f2f2f7", padding: "12px 14px", borderRadius: "12px" }}>
+                <div style={{ fontSize: "11px", color: "#8e8e93", fontWeight: "600", textTransform: "uppercase" }}>Nama Lengkap</div>
+                <div style={{ fontWeight: "700", color: "#1c1c1e", marginTop: "2px" }}>{selectedPenghuni.nama}</div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                <div style={{ backgroundColor: "#f2f2f7", padding: "10px 12px", borderRadius: "10px" }}>
+                  <div style={{ fontSize: "11px", color: "#8e8e93", fontWeight: "600" }}>NIM</div>
+                  <div style={{ fontWeight: "600", color: "#1c1c1e", marginTop: "2px" }}>{selectedPenghuni.nim}</div>
+                </div>
+                <div style={{ backgroundColor: "#f2f2f7", padding: "10px 12px", borderRadius: "10px" }}>
+                  <div style={{ fontSize: "11px", color: "#8e8e93", fontWeight: "600" }}>STATUS</div>
+                  <div style={{ fontWeight: "600", color: "#34c759", marginTop: "2px" }}>{selectedPenghuni.status}</div>
+                </div>
+              </div>
+              <div style={{ backgroundColor: "#f2f2f7", padding: "10px 12px", borderRadius: "10px" }}>
+                <div style={{ fontSize: "11px", color: "#8e8e93", fontWeight: "600" }}>EMAIL</div>
+                <div style={{ color: "#1c1c1e", marginTop: "2px" }}>{selectedPenghuni.email}</div>
+              </div>
+              <div style={{ backgroundColor: "#f2f2f7", padding: "10px 12px", borderRadius: "10px" }}>
+                <div style={{ fontSize: "11px", color: "#8e8e93", fontWeight: "600" }}>KAMAR / LOKASI</div>
+                <div style={{ color: "#007aff", fontWeight: "600", marginTop: "2px" }}>{selectedPenghuni.lokasi}</div>
+              </div>
             </div>
           </div>
         </div>

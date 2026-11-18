@@ -480,6 +480,9 @@ app.MapGet("/api/gedung", async (ApplicationDbContext db) =>
 
 app.MapPost("/api/gedung", async (CreateGedungRequest req, ApplicationDbContext db) =>
 {
+    if (string.IsNullOrWhiteSpace(req.NamaGedung))
+        return Results.BadRequest(new { message = "Nama gedung wajib diisi." });
+
     int assignedUserId = req.IdUser.GetValueOrDefault();
 
     if (assignedUserId <= 0 && !string.IsNullOrWhiteSpace(req.NamaFasil))
@@ -509,13 +512,35 @@ app.MapPost("/api/gedung", async (CreateGedungRequest req, ApplicationDbContext 
         }
     }
 
-    if (assignedUserId <= 0)
+    var userExists = assignedUserId > 0 && await db.Users.AnyAsync(u => u.IdUser == assignedUserId);
+    if (!userExists)
     {
-        var firstUser = await db.Users.FirstOrDefaultAsync();
-        assignedUserId = firstUser?.IdUser ?? 1;
+        var validUser = await db.Users.FirstOrDefaultAsync(u => u.Role == "fasil" || u.Role == "admin")
+                     ?? await db.Users.FirstOrDefaultAsync();
+        if (validUser != null)
+        {
+            assignedUserId = validUser.IdUser;
+        }
+        else
+        {
+            var defaultUser = new User
+            {
+                Nama = "Admin Asrama",
+                Nim = "ADM-001",
+                Asal = "Padang",
+                JenisKelamin = "Laki-laki",
+                Email = "admin@demo.com",
+                Role = "admin"
+            };
+            var passwordHasher = new Microsoft.AspNetCore.Identity.PasswordHasher<User>();
+            defaultUser.Password = passwordHasher.HashPassword(defaultUser, "asrama");
+            db.Users.Add(defaultUser);
+            await db.SaveChangesAsync();
+            assignedUserId = defaultUser.IdUser;
+        }
     }
 
-    var gedung = new Gedung { NamaGedung = req.NamaGedung, IdUser = assignedUserId };
+    var gedung = new Gedung { NamaGedung = req.NamaGedung.Trim(), IdUser = assignedUserId };
     db.Gedungs.Add(gedung);
     await db.SaveChangesAsync();
 
@@ -525,6 +550,7 @@ app.MapPost("/api/gedung", async (CreateGedungRequest req, ApplicationDbContext 
     {
         var prefix = req.NamaGedung.Trim();
         if (prefix.ToLower().StartsWith("gedung ")) prefix = prefix.Substring(7).Trim();
+        if (prefix.ToLower().StartsWith("asrama ")) prefix = prefix.Substring(7).Trim();
         if (string.IsNullOrEmpty(prefix)) prefix = "A";
 
         for (int l = 1; l <= jumlahLantai; l++)
@@ -541,7 +567,13 @@ app.MapPost("/api/gedung", async (CreateGedungRequest req, ApplicationDbContext 
         await db.SaveChangesAsync();
     }
 
-    return Results.Created($"/api/gedung/{gedung.IdGedung}", gedung);
+    return Results.Created($"/api/gedung/{gedung.IdGedung}", new {
+        idGedung = gedung.IdGedung,
+        namaGedung = gedung.NamaGedung,
+        idUser = gedung.IdUser,
+        namaFasil = req.NamaFasil ?? "Fasilitator",
+        message = "Gedung berhasil disimpan ke database."
+    });
 });
 
 app.MapPut("/api/gedung/{id:int}", async (int id, CreateGedungRequest req, ApplicationDbContext db) =>
@@ -821,11 +853,236 @@ app.MapPost("/api/perizinan", async (CreatePerizinanRequest req, ApplicationDbCo
         Nim = nim,
         Tanggal = req.Tanggal != default ? req.Tanggal : DateTime.Today,
         Alasan = req.Alasan,
-        FileBukti = req.FileBukti
+        FileBukti = req.FileBukti,
+        Status = "Menunggu"
     };
     db.Perizinans.Add(izin);
     await db.SaveChangesAsync();
     return Results.Created($"/api/perizinan/{izin.IdIzin}", izin);
+});
+
+app.MapPut("/api/perizinan/{id:int}/status", async (int id, UpdatePerizinanStatusRequest req, ApplicationDbContext db) =>
+{
+    var izin = await db.Perizinans.FindAsync(id);
+    if (izin == null) return Results.NotFound(new { message = "Data perizinan tidak ditemukan." });
+
+    if (!string.IsNullOrWhiteSpace(req.Status))
+    {
+        izin.Status = req.Status.Trim();
+    }
+    await db.SaveChangesAsync();
+    return Results.Ok(new { success = true, message = $"Status izin berhasil diperbarui menjadi {izin.Status}.", izin });
+});
+
+// -------------------------------------------------
+// Session Settings (Jam Sesi Presensi Subuh & Malam)
+// -------------------------------------------------
+app.MapGet("/api/settings/session", async (ApplicationDbContext db) =>
+{
+    var setting = await db.SessionSettings.OrderBy(s => s.Id).FirstOrDefaultAsync();
+    if (setting == null)
+    {
+        setting = new SessionSetting
+        {
+            SubuhStart = "04:00",
+            SubuhEnd = "06:00",
+            MalamStart = "18:00",
+            MalamEnd = "20:30",
+            UpdatedBy = "Fasilitator",
+            UpdatedAt = DateTime.Now
+        };
+        db.SessionSettings.Add(setting);
+        await db.SaveChangesAsync();
+    }
+    return Results.Ok(setting);
+});
+
+app.MapPost("/api/settings/session", async (UpdateSessionSettingRequest req, ApplicationDbContext db) =>
+{
+    var setting = await db.SessionSettings.OrderBy(s => s.Id).FirstOrDefaultAsync();
+    if (setting == null)
+    {
+        setting = new SessionSetting();
+        db.SessionSettings.Add(setting);
+    }
+
+    if (!string.IsNullOrWhiteSpace(req.SubuhStart)) setting.SubuhStart = req.SubuhStart.Trim();
+    if (!string.IsNullOrWhiteSpace(req.SubuhEnd)) setting.SubuhEnd = req.SubuhEnd.Trim();
+    if (!string.IsNullOrWhiteSpace(req.MalamStart)) setting.MalamStart = req.MalamStart.Trim();
+    if (!string.IsNullOrWhiteSpace(req.MalamEnd)) setting.MalamEnd = req.MalamEnd.Trim();
+    if (!string.IsNullOrWhiteSpace(req.UpdatedBy)) setting.UpdatedBy = req.UpdatedBy.Trim();
+    setting.UpdatedAt = DateTime.Now;
+
+    await db.SaveChangesAsync();
+    return Results.Ok(new { success = true, message = "Jadwal sesi presensi berhasil disimpan ke database.", setting });
+});
+
+// -------------------------------------------------
+// Buku Tamu
+// -------------------------------------------------
+app.MapGet("/api/buku-tamu", async (ApplicationDbContext db) =>
+{
+    var list = await db.BukuTamus.OrderByDescending(b => b.IdTamu).ToListAsync();
+    return Results.Ok(list);
+});
+
+app.MapPost("/api/buku-tamu", async (CreateBukuTamuRequest req, ApplicationDbContext db) =>
+{
+    var tamu = new BukuTamu
+    {
+        NamaTamu = req.NamaTamu,
+        Relasi = req.Relasi ?? "Teman",
+        NamaPenghuni = req.NamaPenghuni,
+        WaktuMasuk = !string.IsNullOrWhiteSpace(req.WaktuMasuk) ? req.WaktuMasuk : DateTime.Now.ToString("HH:mm"),
+        WaktuKeluar = "—",
+        Status = "Sedang berkunjung",
+        Catatan = req.Catatan ?? "Kunjungan",
+        Tanggal = DateTime.Today
+    };
+    db.BukuTamus.Add(tamu);
+    await db.SaveChangesAsync();
+    return Results.Created($"/api/buku-tamu/{tamu.IdTamu}", tamu);
+});
+
+app.MapPut("/api/buku-tamu/{id:int}/checkout", async (int id, ApplicationDbContext db) =>
+{
+    var tamu = await db.BukuTamus.FindAsync(id);
+    if (tamu == null) return Results.NotFound(new { message = "Data tamu tidak ditemukan." });
+
+    tamu.WaktuKeluar = DateTime.Now.ToString("HH:mm") + " WIB";
+    tamu.Status = "Selesai berkunjung";
+    await db.SaveChangesAsync();
+    return Results.Ok(new { success = true, message = "Tamu telah selesai berkunjung.", tamu });
+});
+
+// -------------------------------------------------
+// Keluar Masuk Malam
+// -------------------------------------------------
+app.MapGet("/api/keluar-masuk", async (ApplicationDbContext db) =>
+{
+    var list = await db.KeluarMasuks.OrderByDescending(k => k.IdLog).ToListAsync();
+    return Results.Ok(list);
+});
+
+app.MapPost("/api/keluar-masuk", async (CreateKeluarMasukRequest req, ApplicationDbContext db) =>
+{
+    var log = new KeluarMasuk
+    {
+        NamaSantri = req.NamaSantri,
+        Kamar = req.Kamar,
+        Alasan = req.Alasan,
+        JamKeluar = !string.IsNullOrWhiteSpace(req.JamKeluar) ? req.JamKeluar : DateTime.Now.ToString("HH:mm") + " WIB",
+        JamKembali = "—",
+        Status = "Belum kembali",
+        Tanggal = DateTime.Today
+    };
+    db.KeluarMasuks.Add(log);
+    await db.SaveChangesAsync();
+    return Results.Created($"/api/keluar-masuk/{log.IdLog}", log);
+});
+
+app.MapPut("/api/keluar-masuk/{id:int}/kembali", async (int id, ApplicationDbContext db) =>
+{
+    var log = await db.KeluarMasuks.FindAsync(id);
+    if (log == null) return Results.NotFound(new { message = "Catatan keluar-masuk tidak ditemukan." });
+
+    log.JamKembali = DateTime.Now.ToString("HH:mm") + " WIB";
+    log.Status = "Sudah kembali";
+    await db.SaveChangesAsync();
+    return Results.Ok(new { success = true, message = "Santri tercatat telah kembali ke asrama.", log });
+});
+
+// -------------------------------------------------
+// Laporan Kejadian
+// -------------------------------------------------
+app.MapGet("/api/laporan-kejadian", async (ApplicationDbContext db) =>
+{
+    var list = await db.LaporanKejadians.OrderByDescending(l => l.IdLaporan).ToListAsync();
+    return Results.Ok(list);
+});
+
+app.MapPost("/api/laporan-kejadian", async (CreateLaporanKejadianRequest req, ApplicationDbContext db) =>
+{
+    var laporan = new LaporanKejadian
+    {
+        Judul = req.Judul,
+        Tipe = req.Tipe,
+        Lokasi = req.Lokasi,
+        TingkatKeparahan = req.TingkatKeparahan ?? "Ringan",
+        Tanggal = !string.IsNullOrWhiteSpace(req.Tanggal) ? req.Tanggal : DateTime.Now.ToString("dd MMM yyyy"),
+        Kronologi = req.Kronologi,
+        Status = "Menunggu tindak lanjut",
+        DibuatPada = DateTime.Now
+    };
+    db.LaporanKejadians.Add(laporan);
+    await db.SaveChangesAsync();
+    return Results.Created($"/api/laporan-kejadian/{laporan.IdLaporan}", laporan);
+});
+
+app.MapPut("/api/laporan-kejadian/{id:int}/status", async (int id, UpdateLaporanStatusRequest req, ApplicationDbContext db) =>
+{
+    var laporan = await db.LaporanKejadians.FindAsync(id);
+    if (laporan == null) return Results.NotFound(new { message = "Laporan kejadian tidak ditemukan." });
+
+    if (!string.IsNullOrWhiteSpace(req.Status)) laporan.Status = req.Status.Trim();
+    await db.SaveChangesAsync();
+    return Results.Ok(new { success = true, message = "Status laporan kejadian berhasil diperbarui.", laporan });
+});
+
+// -------------------------------------------------
+// Event & Acara Kegiatan Asrama
+// -------------------------------------------------
+app.MapGet("/api/events", async (ApplicationDbContext db) =>
+{
+    var list = await db.EventKegiatans.OrderByDescending(e => e.IdEvent).ToListAsync();
+    return Results.Ok(list);
+});
+
+app.MapPost("/api/events", async (CreateEventKegiatanRequest req, ApplicationDbContext db) =>
+{
+    var evt = new EventKegiatan
+    {
+        Judul = req.Judul,
+        Kategori = req.Kategori ?? "Umum",
+        Lokasi = req.Lokasi ?? "Aula Asrama",
+        Tanggal = req.Tanggal ?? DateTime.Today.ToString("yyyy-MM-dd"),
+        Waktu = req.Waktu ?? "19:30 WIB",
+        Deskripsi = req.Deskripsi ?? "",
+        Penyelenggara = req.Penyelenggara ?? "Pengelola Asrama",
+        Status = req.Status ?? "Akan Datang",
+        DibuatPada = DateTime.Now
+    };
+    db.EventKegiatans.Add(evt);
+    await db.SaveChangesAsync();
+    return Results.Created($"/api/events/{evt.IdEvent}", evt);
+});
+
+app.MapPut("/api/events/{id:int}", async (int id, UpdateEventKegiatanRequest req, ApplicationDbContext db) =>
+{
+    var evt = await db.EventKegiatans.FindAsync(id);
+    if (evt == null) return Results.NotFound(new { message = "Event tidak ditemukan." });
+
+    if (!string.IsNullOrWhiteSpace(req.Judul)) evt.Judul = req.Judul.Trim();
+    if (!string.IsNullOrWhiteSpace(req.Kategori)) evt.Kategori = req.Kategori.Trim();
+    if (!string.IsNullOrWhiteSpace(req.Lokasi)) evt.Lokasi = req.Lokasi.Trim();
+    if (!string.IsNullOrWhiteSpace(req.Tanggal)) evt.Tanggal = req.Tanggal.Trim();
+    if (!string.IsNullOrWhiteSpace(req.Waktu)) evt.Waktu = req.Waktu.Trim();
+    if (req.Deskripsi != null) evt.Deskripsi = req.Deskripsi.Trim();
+    if (!string.IsNullOrWhiteSpace(req.Penyelenggara)) evt.Penyelenggara = req.Penyelenggara.Trim();
+    if (!string.IsNullOrWhiteSpace(req.Status)) evt.Status = req.Status.Trim();
+
+    await db.SaveChangesAsync();
+    return Results.Ok(new { success = true, message = "Event berhasil diperbarui.", evt });
+});
+
+app.MapDelete("/api/events/{id:int}", async (int id, ApplicationDbContext db) =>
+{
+    var evt = await db.EventKegiatans.FindAsync(id);
+    if (evt == null) return Results.NotFound(new { message = "Event tidak ditemukan." });
+
+    db.EventKegiatans.Remove(evt);
+    await db.SaveChangesAsync();
+    return Results.Ok(new { success = true, message = "Event berhasil dihapus." });
 });
 
 
@@ -988,6 +1245,128 @@ try
         );
         await dbContext.SaveChangesAsync();
     }
+
+    // Auto-create additional tables if they don't exist
+    try
+    {
+        await dbContext.Database.ExecuteSqlRawAsync(@"
+            CREATE TABLE IF NOT EXISTS `session_setting` (
+                `id` INT NOT NULL AUTO_INCREMENT,
+                `subuh_start` VARCHAR(10) DEFAULT '04:00',
+                `subuh_end` VARCHAR(10) DEFAULT '06:00',
+                `malam_start` VARCHAR(10) DEFAULT '18:00',
+                `malam_end` VARCHAR(10) DEFAULT '20:30',
+                `updated_by` VARCHAR(100) DEFAULT 'Fasilitator',
+                `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (`id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        ");
+
+        await dbContext.Database.ExecuteSqlRawAsync(@"
+            CREATE TABLE IF NOT EXISTS `buku_tamu` (
+                `id_tamu` INT NOT NULL AUTO_INCREMENT,
+                `nama_tamu` VARCHAR(100) NOT NULL,
+                `relasi` VARCHAR(50) DEFAULT 'Teman',
+                `nama_penghuni` VARCHAR(100) DEFAULT '',
+                `waktu_masuk` VARCHAR(20) DEFAULT '',
+                `waktu_keluar` VARCHAR(20) DEFAULT '—',
+                `status` VARCHAR(50) DEFAULT 'Sedang berkunjung',
+                `catatan` VARCHAR(255) DEFAULT '',
+                `tanggal` DATE DEFAULT (CURRENT_DATE),
+                PRIMARY KEY (`id_tamu`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        ");
+
+        await dbContext.Database.ExecuteSqlRawAsync(@"
+            CREATE TABLE IF NOT EXISTS `keluar_masuk` (
+                `id_log` INT NOT NULL AUTO_INCREMENT,
+                `nama_santri` VARCHAR(100) NOT NULL,
+                `kamar` VARCHAR(50) DEFAULT '',
+                `alasan` VARCHAR(255) DEFAULT '',
+                `jam_keluar` VARCHAR(20) DEFAULT '',
+                `jam_kembali` VARCHAR(20) DEFAULT '—',
+                `status` VARCHAR(50) DEFAULT 'Belum kembali',
+                `tanggal` DATE DEFAULT (CURRENT_DATE),
+                PRIMARY KEY (`id_log`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        ");
+
+        await dbContext.Database.ExecuteSqlRawAsync(@"
+            CREATE TABLE IF NOT EXISTS `laporan_kejadian` (
+                `id_laporan` INT NOT NULL AUTO_INCREMENT,
+                `judul` VARCHAR(150) NOT NULL,
+                `tipe` VARCHAR(50) DEFAULT '',
+                `lokasi` VARCHAR(100) DEFAULT '',
+                `tingkat_keparahan` VARCHAR(50) DEFAULT 'Ringan',
+                `tanggal` VARCHAR(50) DEFAULT '',
+                `kronologi` VARCHAR(1000) DEFAULT '',
+                `status` VARCHAR(50) DEFAULT 'Menunggu tindak lanjut',
+                `dibuat_pada` DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (`id_laporan`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        ");
+
+        await dbContext.Database.ExecuteSqlRawAsync(@"
+            CREATE TABLE IF NOT EXISTS `event_kegiatan` (
+                `id_event` INT NOT NULL AUTO_INCREMENT,
+                `judul` VARCHAR(150) NOT NULL,
+                `kategori` VARCHAR(50) DEFAULT 'Umum',
+                `lokasi` VARCHAR(100) DEFAULT '',
+                `tanggal` VARCHAR(50) DEFAULT '',
+                `waktu` VARCHAR(50) DEFAULT '',
+                `deskripsi` VARCHAR(1000) DEFAULT '',
+                `penyelenggara` VARCHAR(100) DEFAULT 'Pengelola Asrama',
+                `status` VARCHAR(50) DEFAULT 'Akan Datang',
+                `dibuat_pada` DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (`id_event`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        ");
+
+        if (!await dbContext.EventKegiatans.AnyAsync())
+        {
+            dbContext.EventKegiatans.AddRange(
+                new EventKegiatan
+                {
+                    Judul = "Kajian Rutin & Motivasi Mahasiswa",
+                    Kategori = "Keagamaan",
+                    Lokasi = "Masjid Asrama Lantai 1",
+                    Tanggal = DateTime.Today.AddDays(2).ToString("yyyy-MM-dd"),
+                    Waktu = "19:45 WIB",
+                    Deskripsi = "Kajian mingguan dan penguatan motivasi akademik bagi seluruh mahasiswa binaan asrama.",
+                    Penyelenggara = "Fasilitator & Pengurus Asrama",
+                    Status = "Akan Datang"
+                },
+                new EventKegiatan
+                {
+                    Judul = "Kerja Bakti Kebersihan Lantai Binaan",
+                    Kategori = "Lingkungan",
+                    Lokasi = "Area Selasar Lantai 1 - 3",
+                    Tanggal = DateTime.Today.AddDays(4).ToString("yyyy-MM-dd"),
+                    Waktu = "07:30 WIB",
+                    Deskripsi = "Pembersihan bersama area lorong kamar, sanitasi, dan kerapian lingkungan asrama.",
+                    Penyelenggara = "Koordinator Fasilitator",
+                    Status = "Akan Datang"
+                },
+                new EventKegiatan
+                {
+                    Judul = "Sosialisasi Evaluasi Presensi & Kedisiplinan",
+                    Kategori = "Sosialisasi",
+                    Lokasi = "Aula Utama Gedung Asrama",
+                    Tanggal = DateTime.Today.AddDays(-3).ToString("yyyy-MM-dd"),
+                    Waktu = "20:00 WIB",
+                    Deskripsi = "Evaluasi rekapitulasi kehadiran dan peninjauan tata tertib jam malam asrama.",
+                    Penyelenggara = "Divisi Kedisiplinan & Fasil",
+                    Status = "Selesai"
+                }
+            );
+            await dbContext.SaveChangesAsync();
+        }
+
+        try {
+            await dbContext.Database.ExecuteSqlRawAsync("ALTER TABLE `perizinan` ADD COLUMN `status` VARCHAR(50) DEFAULT 'Menunggu'");
+        } catch { }
+    }
+    catch { }
 }
 catch { }
 
@@ -1045,7 +1424,7 @@ public record CreateUserRequest(
     string Password,
     string Role);
 public record CreateGedungRequest(
-    string NamaGedung,
+    string? NamaGedung,
     int? IdUser,
     string? NamaFasil,
     int? JumlahLantai,
@@ -1065,3 +1444,11 @@ public record UpdateUserRequest(
     string? Email,
     string? Password,
     string? Role);
+public record UpdateSessionSettingRequest(string? SubuhStart, string? SubuhEnd, string? MalamStart, string? MalamEnd, string? UpdatedBy);
+public record UpdatePerizinanStatusRequest(string Status);
+public record CreateBukuTamuRequest(string NamaTamu, string? Relasi, string NamaPenghuni, string? WaktuMasuk, string? Catatan);
+public record CreateKeluarMasukRequest(string NamaSantri, string Kamar, string Alasan, string? JamKeluar);
+public record CreateLaporanKejadianRequest(string Judul, string Tipe, string Lokasi, string? TingkatKeparahan, string? Tanggal, string Kronologi);
+public record UpdateLaporanStatusRequest(string Status);
+public record CreateEventKegiatanRequest(string Judul, string? Kategori, string? Lokasi, string? Tanggal, string? Waktu, string? Deskripsi, string? Penyelenggara, string? Status);
+public record UpdateEventKegiatanRequest(string? Judul, string? Kategori, string? Lokasi, string? Tanggal, string? Waktu, string? Deskripsi, string? Penyelenggara, string? Status);

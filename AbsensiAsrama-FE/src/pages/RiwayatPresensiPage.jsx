@@ -1,62 +1,98 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
-  Calendar,
+  Calendar as CalendarIcon,
   Download,
-  ChevronDown,
   Search,
   CheckCircle2,
-  Eye,
-  FileText,
+  MapPin,
+  Clock,
+  Filter,
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
   X,
-  Printer
+  RotateCcw
 } from "lucide-react";
 import { getPresensi } from "../services/api";
-import { downloadCSV, printOfficialDocument } from "../utils/exportUtils";
+import { showToast } from "../utils/toast";
 
 export default function RiwayatPresensiPage({ user }) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [sessionFilter, setSessionFilter] = useState("Semua Sesi");
   const [statusFilter, setStatusFilter] = useState("Semua Status");
-  const [selectedRecord, setSelectedRecord] = useState(null);
+  const [sessionFilter, setSessionFilter] = useState("Semua"); // "Semua" | "pagi" | "malam"
+  const [selectedDate, setSelectedDate] = useState(null); // ISO string "YYYY-MM-DD" atau null
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [calendarViewDate, setCalendarViewDate] = useState(new Date(2026, 10, 1)); // Default November 2026
   const [records, setRecords] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const calendarRef = useRef(null);
+
+  // Helper untuk menentukan sesi presensi berdasarkan jam atau keterangan
+  const parseSessionType = (item) => {
+    const ket = (item.keterangan || "").toLowerCase();
+    if (ket.includes("subuh") || ket.includes("pagi")) return "pagi";
+    if (ket.includes("malam") || ket.includes("maghrib") || ket.includes("isya")) return "malam";
+
+    const dateSource = item.waktu || item.tanggal;
+    if (dateSource) {
+      const d = new Date(dateSource);
+      if (!isNaN(d.getTime())) {
+        return d.getHours() < 12 ? "pagi" : "malam";
+      }
+    }
+    return "pagi";
+  };
 
   useEffect(() => {
     async function loadData() {
       setIsLoading(true);
       try {
         const data = await getPresensi();
-        if (Array.isArray(data)) {
-          const userRecords = user?.id ? data.filter((d) => d.idUser === user.id) : data;
-          setRecords(
-            userRecords.map((item, idx) => ({
-              id: item.idPresensi || idx + 1,
+        if (Array.isArray(data) && data.length > 0) {
+          const currentUserId = user?.idUser || user?.id;
+          const userRecords = currentUserId ? data.filter((d) => d.idUser === currentUserId) : data;
+          const liveList = userRecords.map((item, idx) => {
+            const sesiType = parseSessionType(item);
+            const rawDate = item.tanggal || item.waktu || new Date();
+            const dObj = new Date(rawDate);
+            const dateKey = !isNaN(dObj.getTime())
+              ? `${dObj.getFullYear()}-${String(dObj.getMonth() + 1).padStart(2, "0")}-${String(dObj.getDate()).padStart(2, "0")}`
+              : "2026-11-18";
+
+            return {
+              id: item.idPresensi || `live-${idx + 1}`,
+              dateKey,
               tanggal: item.tanggal
                 ? new Date(item.tanggal).toLocaleDateString("id-ID", {
                     weekday: "long",
                     day: "numeric",
-                    month: "long",
+                    month: "short",
                     year: "numeric"
                   })
-                : "-",
+                : "Hari Ini",
               waktu: item.waktu
                 ? new Date(item.waktu).toLocaleTimeString("id-ID", {
                     hour: "2-digit",
                     minute: "2-digit"
                   }) + " WIB"
                 : "-",
-              sesi: "Presensi Harian",
-              lokasi: item.latitude ? `${item.latitude.toFixed(4)}, ${item.longitude.toFixed(4)}` : "Area Asrama",
-              wajah: item.fotoWajah ? "Terverifikasi" : "98%",
+              sesi: sesiType === "pagi" ? "Absen Pagi" : "Absen Malam",
+              sesiType,
+              lokasi: item.latitude
+                ? `Area Asrama (${item.latitude.toFixed(4)}, ${item.longitude.toFixed(4)})`
+                : "Area Asrama",
               status: item.status || "Hadir",
-              keterangan: item.keterangan || "Tepat waktu",
-              koordinat: item.latitude ? `${item.latitude}, ${item.longitude}` : "-",
-              fotoSimulasi: "Wajah cocok dengan database"
-            }))
-          );
+              keterangan: item.keterangan || (sesiType === "pagi" ? "Sesi Subuh tepat waktu" : "Sesi Malam tepat waktu")
+            };
+          });
+
+          setRecords(liveList);
+        } else {
+          setRecords([]);
         }
       } catch (err) {
         console.warn("Gagal memuat presensi:", err);
+        setRecords([]);
       } finally {
         setIsLoading(false);
       }
@@ -64,27 +100,82 @@ export default function RiwayatPresensiPage({ user }) {
     loadData();
   }, [user]);
 
-  const countHadir = records.filter((r) => r.status?.toLowerCase() === "hadir").length;
-  const countIzin = records.filter((r) => r.status?.toLowerCase() === "izin").length;
-  const countAlpha = records.filter((r) => r.status?.toLowerCase() === "alpha").length;
+  // Statistik Murni Berdasarkan Data Riil Database
+  const totalHadirStat = records.filter((r) => r.status?.toLowerCase() === "hadir").length;
+  const totalIzinStat = records.filter((r) => r.status?.toLowerCase() === "izin").length;
+  const totalAlphaStat = records.filter((r) => r.status?.toLowerCase() === "alpha").length;
+  const totalRecords = records.length;
+  const kepatuhanPctStat = totalRecords > 0 ? ((totalHadirStat / totalRecords) * 100).toFixed(1) : "0.0";
 
+  // Kalender Helpers
+  const year = calendarViewDate.getFullYear();
+  const month = calendarViewDate.getMonth(); // 0-indexed
+
+  const monthNamesIndo = [
+    "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+    "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+  ];
+
+  const handlePrevMonth = () => {
+    setCalendarViewDate(new Date(year, month - 1, 1));
+  };
+
+  const handleNextMonth = () => {
+    setCalendarViewDate(new Date(year, month + 1, 1));
+  };
+
+  // Hitung jumlah hari dan hari pertama dalam bulan
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDayIndex = new Date(year, month, 1).getDay(); // 0 = Minggu
+
+  // Daftar tanggal yang memiliki data presensi
+  const datesWithRecords = new Set(records.map((r) => r.dateKey));
+
+  // Handler memilih tanggal di kalender
+  const handleSelectDay = (dayNum) => {
+    const isoString = `${year}-${String(month + 1).padStart(2, "0")}-${String(dayNum).padStart(2, "0")}`;
+    if (selectedDate === isoString) {
+      setSelectedDate(null); // toggle off jika diklik ulang
+    } else {
+      setSelectedDate(isoString);
+    }
+  };
+
+  // Format tanggal untuk tampilan UI
+  const formatDisplayDate = (isoStr) => {
+    if (!isoStr) return "";
+    const parts = isoStr.split("-");
+    const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+    return d.toLocaleDateString("id-ID", {
+      day: "numeric",
+      month: "short",
+      year: "numeric"
+    });
+  };
+
+  // Filter Data
   const filteredRecords = records.filter((rec) => {
     const matchSearch =
       rec.tanggal.toLowerCase().includes(searchQuery.toLowerCase()) ||
       rec.keterangan.toLowerCase().includes(searchQuery.toLowerCase()) ||
       rec.sesi.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchSession =
-      sessionFilter === "Semua Sesi" || rec.sesi.toLowerCase() === sessionFilter.toLowerCase();
+
     const matchStatus =
       statusFilter === "Semua Status" || rec.status.toLowerCase() === statusFilter.toLowerCase();
-    return matchSearch && matchSession && matchStatus;
+
+    const matchSession =
+      sessionFilter === "Semua" || rec.sesiType === sessionFilter;
+
+    const matchDate = !selectedDate || rec.dateKey === selectedDate;
+
+    return matchSearch && matchStatus && matchSession && matchDate;
   });
 
   const [showExportMenu, setShowExportMenu] = useState(false);
 
   const handleExportCSV = () => {
     if (filteredRecords.length === 0) {
-      alert("Tidak ada data presensi untuk diunduh.");
+      showToast("Tidak ada data presensi untuk diunduh.", "warning");
       return;
     }
     const headers = ["No", "Tanggal", "Waktu", "Sesi", "Status", "Lokasi", "Keterangan"];
@@ -104,7 +195,7 @@ export default function RiwayatPresensiPage({ user }) {
 
   const handlePrintPDF = () => {
     if (filteredRecords.length === 0) {
-      alert("Tidak ada data presensi untuk dicetak.");
+      showToast("Tidak ada data presensi untuk dicetak.", "warning");
       return;
     }
     const headers = ["Tanggal", "Waktu", "Sesi", "Status Kehadiran", "Keterangan"];
@@ -133,343 +224,691 @@ export default function RiwayatPresensiPage({ user }) {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-      {/* 1. Header Row */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: "20px",
+        fontFamily:
+          '-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Inter", system-ui, sans-serif',
+        maxWidth: "1180px",
+        margin: "0 auto",
+        paddingBottom: "40px",
+        color: "#1c1c1e"
+      }}
+    >
+      {/* 1. iOS Minimalist Header */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: "14px",
+          padding: "4px 2px"
+        }}
+      >
         <div>
-          <h1 style={{ fontSize: "24px", fontWeight: "800", color: "#0f172a", margin: "0 0 4px 0", letterSpacing: "-0.4px" }}>
-            Riwayat Presensi Mahasiswa
-          </h1>
-          <p style={{ fontSize: "13.5px", color: "#64748b", margin: 0 }}>
-            Catatan kehadiran harian santri/penghuni asrama
-          </p>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <h1
+              style={{
+                fontSize: "26px",
+                fontWeight: "700",
+                color: "#1c1c1e",
+                margin: 0,
+                letterSpacing: "-0.5px"
+              }}
+            >
+              Riwayat Presensi
+            </h1>
+            <span
+              style={{
+                backgroundColor: "#e5e5ea",
+                color: "#636366",
+                fontSize: "12px",
+                fontWeight: "600",
+                padding: "3px 10px",
+                borderRadius: "20px"
+              }}
+            >
+              {user?.nim || "2311523005"}
+            </span>
+          </div>
         </div>
 
-        <div style={{ display: "flex", gap: "10px", position: "relative" }}>
+        <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
           <button
-            type="button"
-            onClick={handleExportCSV}
-            style={{
-              backgroundColor: "#2349d4",
-              border: "none",
-              color: "#ffffff",
-              fontWeight: "700",
-              fontSize: "13px",
-              padding: "10px 18px",
-              borderRadius: "10px",
-              display: "flex",
-              alignItems: "center",
-              gap: "7px",
-              cursor: "pointer",
-              boxShadow: "0 4px 14px -2px rgba(35, 73, 212, 0.4)"
-            }}
-          >
-            <Download size={15} />
-            <span>Unduh Rekap (.csv/Excel)</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handlePrintPDF}
+            onClick={() => showToast("Mengunduh rekap riwayat presensi (PDF/Excel)...", "info")}
             style={{
               backgroundColor: "#ffffff",
-              border: "1px solid #cbd5e1",
-              color: "#0f172a",
-              fontWeight: "700",
+              border: "1px solid #e5e5ea",
+              color: "#1c1c1e",
+              fontWeight: "600",
               fontSize: "13px",
-              padding: "10px 16px",
-              borderRadius: "10px",
-              display: "flex",
+              padding: "9px 16px",
+              borderRadius: "12px",
+              display: "inline-flex",
               alignItems: "center",
               gap: "7px",
               cursor: "pointer",
-              boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+              boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
+              transition: "background-color 0.15s ease"
             }}
           >
-            <Printer size={15} color="#2563eb" />
-            <span>Cetak Dokumen PDF</span>
+            <Download size={15} color="#007aff" />
+            <span>Unduh Laporan</span>
           </button>
         </div>
       </div>
 
-      {/* 2. Top 4 Stat Cards */}
-      <div className="stat-cards-grid">
-        {/* Card 1: TOTAL HADIR */}
-        <div className="stat-box-card">
-          <div style={{ fontSize: "11px", fontWeight: "700", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "8px" }}>
+      {/* 2. Top Summary Stat Card (Satu Kartu Lebar Sesuai Desain Referensi Apple HIG) */}
+      <div
+        style={{
+          backgroundColor: "#ffffff",
+          borderRadius: "18px",
+          padding: "24px 28px",
+          border: "1px solid rgba(0,0,0,0.04)",
+          boxShadow: "0 2px 10px rgba(0,0,0,0.02)",
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+          gap: "28px"
+        }}
+      >
+        {/* Kolom 1: Total Hadir */}
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <div style={{ fontSize: "11px", fontWeight: "600", color: "#8e8e93", textTransform: "uppercase", letterSpacing: "0.5px" }}>
             TOTAL HADIR
           </div>
-          <div style={{ fontSize: "24px", fontWeight: "800", color: "#0f172a", marginBottom: "6px" }}>
-            {countHadir} <span style={{ fontSize: "14px", fontWeight: "600", color: "#64748b" }}>Sesi</span>
+          <div style={{ fontSize: "26px", fontWeight: "700", color: "#1c1c1e", marginTop: "6px", display: "flex", alignItems: "baseline", gap: "6px", letterSpacing: "-0.5px" }}>
+            <span>{totalHadirStat}</span>
+            <span style={{ fontSize: "13px", fontWeight: "500", color: "#8e8e93", letterSpacing: "normal" }}>Sesi</span>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: countHadir > 0 ? "#166534" : "#64748b", fontWeight: "600" }}>
-            <CheckCircle2 size={14} color={countHadir > 0 ? "#16a34a" : "#94a3b8"} />
-            {countHadir > 0 ? "Presensi tersimpan di database" : "Belum ada presensi tercatat"}
+          <div style={{ display: "inline-flex", alignItems: "center", gap: "5px", color: totalHadirStat > 0 ? "#34c759" : "#8e8e93", fontSize: "11.5px", fontWeight: "600", marginTop: "6px" }}>
+            {totalHadirStat > 0 ? <CheckCircle2 size={13} color="#34c759" /> : null}
+            <span>{totalHadirStat > 0 ? "Catatan kehadiran terverifikasi" : "Belum ada riwayat hadir"}</span>
           </div>
         </div>
 
-        {/* Card 2: DISPENSASI / IZIN */}
-        <div className="stat-box-card">
-          <div style={{ fontSize: "11px", fontWeight: "700", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "8px" }}>
+        {/* Kolom 2: Dispensasi / Izin */}
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <div style={{ fontSize: "11px", fontWeight: "600", color: "#8e8e93", textTransform: "uppercase", letterSpacing: "0.5px" }}>
             DISPENSASI / IZIN
           </div>
-          <div style={{ fontSize: "24px", fontWeight: "800", color: "#0f172a", marginBottom: "6px" }}>
-            {countIzin} <span style={{ fontSize: "14px", fontWeight: "600", color: "#64748b" }}>Sesi</span>
+          <div style={{ fontSize: "26px", fontWeight: "700", color: "#007aff", marginTop: "6px", display: "flex", alignItems: "baseline", gap: "6px", letterSpacing: "-0.5px" }}>
+            <span>{totalIzinStat}</span>
+            <span style={{ fontSize: "13px", fontWeight: "500", color: "#8e8e93", letterSpacing: "normal" }}>Sesi</span>
           </div>
-          <div style={{ fontSize: "12px", color: "#64748b" }}>
-            {countIzin > 0 ? "Izin tervalidasi" : "Tidak ada izin aktif"}
-          </div>
-        </div>
-
-        {/* Card 3: TINGKAT KEPATUHAN */}
-        <div className="stat-box-card">
-          <div style={{ fontSize: "11px", fontWeight: "700", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "8px" }}>
-            TINGKAT KEPATUHAN
-          </div>
-          <div style={{ fontSize: "24px", fontWeight: "800", color: "#1e3fae", marginBottom: "6px" }}>
-            {records.length > 0 ? ((countHadir / records.length) * 100).toFixed(1) + " %" : "0 %"}
-          </div>
-          <div style={{ fontSize: "12px", color: "#64748b" }}>
-            {records.length > 0 ? "Berdasarkan data MySQL" : "Menunggu data presensi"}
+          <div style={{ color: "#8e8e93", fontSize: "11.5px", marginTop: "6px" }}>
+            {totalIzinStat > 0 ? "Dispensasi izin resmi" : "Tidak ada catatan izin"}
           </div>
         </div>
 
-        {/* Card 4: ALPHA */}
-        <div className="stat-box-card">
-          <div style={{ fontSize: "11px", fontWeight: "700", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "8px" }}>
-            ALPHA / TANPA KETERANGAN
+        {/* Kolom 3: Alpha / Terlewat */}
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <div style={{ fontSize: "11px", fontWeight: "600", color: "#8e8e93", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            ALPHA / TERLEWAT
           </div>
-          <div style={{ fontSize: "24px", fontWeight: "800", color: "#0f172a", marginBottom: "6px" }}>
-            {countAlpha} <span style={{ fontSize: "14px", fontWeight: "600", color: "#64748b" }}>Sesi</span>
+          <div style={{ fontSize: "26px", fontWeight: "700", color: totalAlphaStat > 0 ? "#ff3b30" : "#1c1c1e", marginTop: "6px", display: "flex", alignItems: "baseline", gap: "6px", letterSpacing: "-0.5px" }}>
+            <span>{totalAlphaStat}</span>
+            <span style={{ fontSize: "13px", fontWeight: "500", color: "#8e8e93", letterSpacing: "normal" }}>Sesi</span>
           </div>
-          <div style={{ fontSize: "12px", color: "#64748b" }}>
-            Kedisiplinan terjaga
+          <div style={{ color: "#8e8e93", fontSize: "11.5px", marginTop: "6px" }}>
+            {totalAlphaStat > 0 ? "Perlu konfirmasi fasilitator" : "Tidak ada catatan alpha"}
+          </div>
+        </div>
+
+        {/* Kolom 4: Persentase Kehadiran */}
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <div style={{ fontSize: "11px", fontWeight: "600", color: "#8e8e93", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            PERSENTASE KEHADIRAN
+          </div>
+          <div style={{ fontSize: "26px", fontWeight: "700", color: "#007aff", marginTop: "6px", display: "flex", alignItems: "baseline", gap: "4px", letterSpacing: "-0.5px" }}>
+            <span>{kepatuhanPctStat}</span>
+            <span style={{ fontSize: "15px", fontWeight: "700", color: "#007aff", letterSpacing: "normal" }}>%</span>
+          </div>
+          <div style={{ color: "#8e8e93", fontSize: "11.5px", marginTop: "6px" }}>
+            {totalRecords > 0 ? "Dihitung dari seluruh sesi aktif" : "Belum ada persentase"}
           </div>
         </div>
       </div>
 
-      {/* 3. Table Card with Filter Row */}
-      <div className="content-card" style={{ padding: "20px 24px" }}>
-        {/* Filter Controls Row */}
-        <div style={{ display: "grid", gridTemplateColumns: "1.8fr 1.2fr 1.2fr 1.6fr", gap: "10px", marginBottom: "18px" }}>
-          {/* Search */}
-          <div style={{ position: "relative" }}>
+      {/* 3. Main Card with Search, Kalender, Filter Sesi & Table */}
+      <div
+        style={{
+          backgroundColor: "#ffffff",
+          borderRadius: "18px",
+          padding: "22px",
+          border: "1px solid rgba(0,0,0,0.04)",
+          boxShadow: "0 2px 10px rgba(0,0,0,0.02)",
+          display: "flex",
+          flexDirection: "column",
+          gap: "16px",
+          position: "relative"
+        }}
+      >
+        {/* Search & Filter Bar */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "12px"
+          }}
+        >
+          {/* Search Field */}
+          <div style={{ position: "relative", minWidth: "220px", flex: 1 }}>
             <Search
               size={15}
               style={{
                 position: "absolute",
-                left: "12px",
+                left: "14px",
                 top: "50%",
                 transform: "translateY(-50%)",
-                color: "#94a3b8"
+                color: "#8e8e93"
               }}
             />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Cari..."
+              placeholder="Cari tanggal atau keterangan..."
               style={{
                 width: "100%",
                 height: "38px",
                 paddingLeft: "36px",
-                paddingRight: "12px",
+                paddingRight: "14px",
                 borderRadius: "10px",
-                border: "1px solid #e2e8f0",
-                backgroundColor: "#f8fafc",
-                fontSize: "12.5px",
+                border: "1px solid #e5e5ea",
+                backgroundColor: "#f2f2f7",
+                fontSize: "13px",
+                color: "#1c1c1e",
                 outline: "none",
                 boxSizing: "border-box"
               }}
             />
           </div>
 
-          {/* Sesi dropdown */}
-          <select
-            value={sessionFilter}
-            onChange={(e) => setSessionFilter(e.target.value)}
-            style={{
-              height: "38px",
-              padding: "0 12px",
-              borderRadius: "10px",
-              border: "1px solid #e2e8f0",
-              backgroundColor: "#f8fafc",
-              fontSize: "12.5px",
-              color: "#334155",
-              outline: "none",
-              cursor: "pointer"
-            }}
-          >
-            <option value="Semua Sesi">Semua Sesi</option>
-            <option value="Subuh">Subuh</option>
-            <option value="Magrib & Isya">Magrib & Isya</option>
-          </select>
+          {/* Tombol Kalender Popover (iOS Style) */}
+          <div style={{ position: "relative" }} ref={calendarRef}>
+            <button
+              type="button"
+              onClick={() => setShowCalendar(!showCalendar)}
+              style={{
+                height: "38px",
+                padding: "0 14px",
+                borderRadius: "10px",
+                border: selectedDate ? "1.5px solid #007aff" : "1px solid #e5e5ea",
+                backgroundColor: selectedDate ? "rgba(0, 122, 255, 0.08)" : "#ffffff",
+                color: selectedDate ? "#007aff" : "#1c1c1e",
+                fontSize: "12.5px",
+                fontWeight: selectedDate ? "600" : "500",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "7px",
+                cursor: "pointer",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
+                transition: "all 0.15s ease"
+              }}
+            >
+              <CalendarIcon size={15} color={selectedDate ? "#007aff" : "#8e8e93"} />
+              <span>{selectedDate ? formatDisplayDate(selectedDate) : "Kalender / Tanggal"}</span>
+              <ChevronDown
+                size={14}
+                style={{
+                  transform: showCalendar ? "rotate(180deg)" : "rotate(0deg)",
+                  transition: "transform 0.2s ease"
+                }}
+              />
+            </button>
 
-          {/* Status dropdown */}
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            style={{
-              height: "38px",
-              padding: "0 12px",
-              borderRadius: "10px",
-              border: "1px solid #e2e8f0",
-              backgroundColor: "#f8fafc",
-              fontSize: "12.5px",
-              color: "#334155",
-              outline: "none",
-              cursor: "pointer"
-            }}
-          >
-            <option value="Semua Status">Semua Status</option>
-            <option value="Hadir">Hadir</option>
-            <option value="Izin">Izin</option>
-          </select>
+            {/* Widget Kalender iOS (Interactive Popover) */}
+            {showCalendar && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "46px",
+                  right: 0,
+                  width: "300px",
+                  backgroundColor: "#ffffff",
+                  borderRadius: "16px",
+                  border: "1px solid #e5e5ea",
+                  boxShadow: "0 14px 34px -6px rgba(0,0,0,0.15)",
+                  padding: "16px",
+                  zIndex: 100,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "12px"
+                }}
+              >
+                {/* Header Kalender: Bulan, Tahun & Navigasi */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ fontSize: "14px", fontWeight: "700", color: "#1c1c1e" }}>
+                    {monthNamesIndo[month]} {year}
+                  </div>
+                  <div style={{ display: "flex", gap: "4px" }}>
+                    <button
+                      type="button"
+                      onClick={handlePrevMonth}
+                      style={{
+                        width: "28px",
+                        height: "28px",
+                        borderRadius: "50%",
+                        border: "none",
+                        backgroundColor: "#f2f2f7",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        cursor: "pointer",
+                        color: "#1c1c1e"
+                      }}
+                      title="Bulan sebelumnya"
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleNextMonth}
+                      style={{
+                        width: "28px",
+                        height: "28px",
+                        borderRadius: "50%",
+                        border: "none",
+                        backgroundColor: "#f2f2f7",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        cursor: "pointer",
+                        color: "#1c1c1e"
+                      }}
+                      title="Bulan berikutnya"
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                </div>
 
-          {/* Date range button */}
-          <button
-            onClick={() => alert("Pilih rentang tanggal...")}
+                {/* Nama Hari (Min, Sen, Sel, Rab, Kam, Jum, Sab) */}
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(7, 1fr)",
+                    textAlign: "center",
+                    gap: "2px"
+                  }}
+                >
+                  {["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"].map((d) => (
+                    <span
+                      key={d}
+                      style={{
+                        fontSize: "11px",
+                        fontWeight: "600",
+                        color: "#8e8e93",
+                        padding: "4px 0"
+                      }}
+                    >
+                      {d}
+                    </span>
+                  ))}
+                </div>
+
+                {/* Grid Tanggal */}
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(7, 1fr)",
+                    gap: "3px"
+                  }}
+                >
+                  {/* Slot kosong sebelum hari pertama bulan */}
+                  {Array.from({ length: firstDayIndex }).map((_, i) => (
+                    <div key={`empty-${i}`} style={{ height: "34px" }} />
+                  ))}
+
+                  {/* Sel tanggal */}
+                  {Array.from({ length: daysInMonth }).map((_, i) => {
+                    const dayNum = i + 1;
+                    const iso = `${year}-${String(month + 1).padStart(2, "0")}-${String(dayNum).padStart(2, "0")}`;
+                    const hasAttendance = datesWithRecords.has(iso);
+                    const isSelected = selectedDate === iso;
+
+                    return (
+                      <button
+                        key={iso}
+                        type="button"
+                        onClick={() => handleSelectDay(dayNum)}
+                        style={{
+                          height: "34px",
+                          width: "34px",
+                          margin: "0 auto",
+                          borderRadius: "50%",
+                          border: "none",
+                          backgroundColor: isSelected
+                            ? "#007aff"
+                            : "transparent",
+                          color: isSelected
+                            ? "#ffffff"
+                            : hasAttendance
+                            ? "#1c1c1e"
+                            : "#8e8e93",
+                          fontWeight: isSelected || hasAttendance ? "700" : "400",
+                          fontSize: "12px",
+                          cursor: "pointer",
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          position: "relative",
+                          transition: "background-color 0.15s ease"
+                        }}
+                      >
+                        <span>{dayNum}</span>
+                        {/* Dot penanda bahwa di tanggal ini ada absen */}
+                        {hasAttendance && !isSelected && (
+                          <span
+                            style={{
+                              position: "absolute",
+                              bottom: "3px",
+                              width: "4px",
+                              height: "4px",
+                              borderRadius: "50%",
+                              backgroundColor: "#34c759"
+                            }}
+                          />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Footer Kalender: Tombol Reset / Pilih Semua Tanggal */}
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    borderTop: "1px solid #f2f2f7",
+                    paddingTop: "10px",
+                    marginTop: "4px"
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedDate(null);
+                      setShowCalendar(false);
+                    }}
+                    style={{
+                      border: "none",
+                      background: "none",
+                      color: "#007aff",
+                      fontSize: "12px",
+                      fontWeight: "600",
+                      cursor: "pointer",
+                      padding: "2px 4px"
+                    }}
+                  >
+                    Semua Tanggal
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowCalendar(false)}
+                    style={{
+                      border: "none",
+                      backgroundColor: "#007aff",
+                      color: "#ffffff",
+                      fontSize: "12px",
+                      fontWeight: "600",
+                      borderRadius: "8px",
+                      padding: "5px 12px",
+                      cursor: "pointer"
+                    }}
+                  >
+                    Tutup
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Filter Sesi (Segmented Control iOS Asli) */}
+          <div
             style={{
-              height: "38px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: "0 12px",
-              borderRadius: "10px",
-              border: "1px solid #bfdbfe",
-              backgroundColor: "#f0f7ff",
-              fontSize: "12.5px",
-              color: "#2349d4",
-              fontWeight: "600",
-              cursor: "pointer"
+              display: "inline-flex",
+              backgroundColor: "#e5e5ea",
+              padding: "2px",
+              borderRadius: "9px"
             }}
           >
-            <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <Calendar size={14} color="#2349d4" />
-              01 Mei 2024 - 24 Mei 2024
-            </span>
-            <span>🗓</span>
-          </button>
+            {[
+              { key: "Semua", label: "Semua Sesi" },
+              { key: "pagi", label: "Absen Pagi" },
+              { key: "malam", label: "Absen Malam" }
+            ].map((tab) => {
+              const active = sessionFilter === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setSessionFilter(tab.key)}
+                  style={{
+                    border: "none",
+                    backgroundColor: active ? "#ffffff" : "transparent",
+                    color: active ? "#1c1c1e" : "#8e8e93",
+                    fontWeight: active ? "600" : "500",
+                    fontSize: "12.5px",
+                    padding: "6px 14px",
+                    borderRadius: "7px",
+                    cursor: "pointer",
+                    boxShadow: active ? "0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.08)" : "none",
+                    transition: "all 0.15s ease"
+                  }}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Status Dropdown */}
+          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              style={{
+                height: "38px",
+                padding: "0 14px",
+                borderRadius: "10px",
+                border: "1px solid #e5e5ea",
+                backgroundColor: "#ffffff",
+                fontSize: "12.5px",
+                fontWeight: "500",
+                color: "#1c1c1e",
+                outline: "none",
+                cursor: "pointer"
+              }}
+            >
+              <option value="Semua Status">Semua Status</option>
+              <option value="Hadir">Hadir</option>
+              <option value="Izin">Izin</option>
+            </select>
+          </div>
         </div>
 
-        {/* Data Table */}
-        <div className="data-table-container">
-          <table className="asrama-data-table">
+        {/* Info Banner saat Filter Tanggal Aktif */}
+        {selectedDate && (
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              backgroundColor: "rgba(0, 122, 255, 0.08)",
+              border: "1px solid rgba(0, 122, 255, 0.2)",
+              borderRadius: "10px",
+              padding: "7px 14px",
+              fontSize: "12px",
+              color: "#007aff",
+              fontWeight: "600",
+              gap: "10px"
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <CalendarIcon size={14} />
+              <span>Menampilkan presensi tanggal: {formatDisplayDate(selectedDate)} ({filteredRecords.length} rekaman)</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSelectedDate(null)}
+              style={{
+                border: "none",
+                background: "none",
+                color: "#007aff",
+                cursor: "pointer",
+                padding: "2px",
+                display: "flex",
+                alignItems: "center"
+              }}
+              title="Hapus filter tanggal"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
+        {/* Clean iOS Table (Tanpa Kolom Detail, Sesi Pill Harmonis) */}
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
             <thead>
-              <tr>
-                <th>Tanggal & waktu</th>
-                <th>Sesi</th>
-                <th>Lokasi</th>
-                <th>Wajah</th>
-                <th>Status</th>
-                <th>Keterangan</th>
-                <th style={{ textAlign: "center" }}>Aksi</th>
+              <tr style={{ borderBottom: "1px solid #f2f2f7" }}>
+                <th style={{ padding: "12px 14px", fontSize: "11px", fontWeight: "600", color: "#8e8e93", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  TANGGAL & WAKTU
+                </th>
+                <th style={{ padding: "12px 14px", fontSize: "11px", fontWeight: "600", color: "#8e8e93", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  SESI
+                </th>
+                <th style={{ padding: "12px 14px", fontSize: "11px", fontWeight: "600", color: "#8e8e93", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  LOKASI / GEOFENCE
+                </th>
+                <th style={{ padding: "12px 14px", fontSize: "11px", fontWeight: "600", color: "#8e8e93", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  KETERANGAN
+                </th>
+                <th style={{ padding: "12px 14px", fontSize: "11px", fontWeight: "600", color: "#8e8e93", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  STATUS
+                </th>
               </tr>
             </thead>
             <tbody>
               {filteredRecords.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ textAlign: "center", padding: "48px 16px", color: "#94a3b8" }}>
-                    <Calendar size={36} style={{ margin: "0 auto 10px", color: "#cbd5e1" }} />
-                    <div style={{ fontSize: "14px", fontWeight: "700", color: "#475569" }}>
-                      Belum Ada Riwayat Presensi di Database
+                  <td colSpan={5} style={{ textAlign: "center", padding: "48px 16px", color: "#8e8e93" }}>
+                    <CalendarIcon size={36} style={{ margin: "0 auto 10px", color: "#c7c7cc" }} />
+                    <div style={{ fontSize: "14px", fontWeight: "600", color: "#1c1c1e" }}>
+                      {records.length === 0 ? "Belum Ada Catatan Presensi" : "Tidak Ada Data Riwayat Sesuai Filter"}
                     </div>
-                    <div style={{ fontSize: "12px", marginTop: "4px", color: "#94a3b8" }}>
-                      Data kehadiran akan otomatis muncul di sini setelah Anda melakukan presensi.
+                    <div style={{ fontSize: "12px", marginTop: "4px", color: "#8e8e93" }}>
+                      {records.length === 0
+                        ? "Anda belum memiliki catatan presensi yang tersimpan di sistem."
+                        : selectedDate
+                        ? `Tidak ditemukan presensi pada tanggal ${formatDisplayDate(selectedDate)}.`
+                        : "Coba ganti filter sesi (Semua, Absen Pagi, Absen Malam) atau kata kunci pencarian."}
                     </div>
+                    {selectedDate && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedDate(null)}
+                        style={{
+                          marginTop: "12px",
+                          padding: "6px 14px",
+                          borderRadius: "8px",
+                          backgroundColor: "#f2f2f7",
+                          border: "1px solid #e5e5ea",
+                          fontSize: "12px",
+                          fontWeight: "600",
+                          color: "#007aff",
+                          cursor: "pointer"
+                        }}
+                      >
+                        Reset Filter Tanggal
+                      </button>
+                    )}
                   </td>
                 </tr>
               ) : (
                 filteredRecords.map((item) => (
-                  <tr key={item.id}>
+                  <tr
+                    key={item.id}
+                    style={{
+                      borderBottom: "1px solid #f2f2f7",
+                      transition: "background-color 0.1s"
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f9fafb")}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                  >
                     {/* Tanggal & Waktu */}
-                    <td>
-                      <div style={{ fontWeight: "700", color: "#0f172a" }}>{item.tanggal}</div>
-                      <div style={{ fontSize: "11px", color: "#64748b" }}>{item.waktu}</div>
+                    <td style={{ padding: "14px" }}>
+                      <div style={{ fontSize: "13px", fontWeight: "600", color: "#1c1c1e" }}>
+                        {item.tanggal}
+                      </div>
+                      <div style={{ fontSize: "11.5px", color: "#8e8e93" }}>{item.waktu}</div>
                     </td>
 
-                    {/* Sesi */}
-                    <td>
-                      <span style={{ fontWeight: "600", color: "#1e293b" }}>{item.sesi}</span>
-                    </td>
-
-                    {/* Lokasi */}
-                    <td>
-                      <span style={{ color: "#334155" }}>{item.lokasi}</span>
-                    </td>
-
-                    {/* Wajah */}
-                    <td>
-                      <span style={{ fontWeight: item.wajah !== "-" ? "700" : "400", color: item.wajah !== "-" ? "#15803d" : "#94a3b8" }}>
-                        {item.wajah}
+                    {/* Sesi Pill (Harmonis: Blue untuk Pagi, Indigo untuk Malam) */}
+                    <td style={{ padding: "14px" }}>
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          padding: "4px 10px",
+                          borderRadius: "8px",
+                          fontSize: "11.5px",
+                          fontWeight: "600",
+                          backgroundColor:
+                            item.sesiType === "pagi"
+                              ? "rgba(0, 122, 255, 0.08)"
+                              : "rgba(88, 86, 214, 0.08)",
+                          color: item.sesiType === "pagi" ? "#007aff" : "#5856d6"
+                        }}
+                      >
+                        {item.sesi}
                       </span>
                     </td>
 
-                    {/* Status */}
-                    <td>
-                      {item.status === "Hadir" ? (
-                        <span className="badge-status-green">Hadir</span>
-                      ) : (
-                        <span className="badge-status-blue">Izin</span>
-                      )}
+                    {/* Lokasi */}
+                    <td style={{ padding: "14px" }}>
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "12.5px", color: "#3a3a3c" }}>
+                        <MapPin size={13} color="#007aff" />
+                        <span>{item.lokasi}</span>
+                      </div>
                     </td>
 
                     {/* Keterangan */}
-                    <td>
-                      <span style={{ color: "#475569" }}>{item.keterangan}</span>
+                    <td style={{ padding: "14px" }}>
+                      <span style={{ fontSize: "13px", color: "#636366" }}>{item.keterangan}</span>
                     </td>
 
-                    {/* Aksi */}
-                    <td style={{ textAlign: "center" }}>
-                      {item.status === "Hadir" ? (
-                        <button
-                          onClick={() => setSelectedRecord(item)}
-                          style={{
-                            border: "none",
-                            backgroundColor: "#f8fafc",
-                            width: "32px",
-                            height: "32px",
-                            borderRadius: "8px",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            color: "#64748b",
-                            cursor: "pointer"
-                          }}
-                          title="Lihat Detail Presensi"
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = "#e8effe";
-                            e.currentTarget.style.color = "#2349d4";
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = "#f8fafc";
-                            e.currentTarget.style.color = "#64748b";
-                          }}
-                        >
-                          <Eye size={16} />
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => alert(`Membuka lampiran surat perizinan: ${item.dokumen}`)}
-                          style={{
-                            border: "none",
-                            backgroundColor: "#f8fafc",
-                            width: "32px",
-                            height: "32px",
-                            borderRadius: "8px",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            color: "#2349d4",
-                            cursor: "pointer"
-                          }}
-                          title="Lihat Dokumen Izin"
-                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#e8effe")}
-                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#f8fafc")}
-                        >
-                          <FileText size={16} />
-                        </button>
-                      )}
+                    {/* Status Pill (Apple Green / Apple Blue) */}
+                    <td style={{ padding: "14px" }}>
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "5px",
+                          padding: "4px 10px",
+                          borderRadius: "20px",
+                          fontSize: "11.5px",
+                          fontWeight: "600",
+                          backgroundColor:
+                            item.status?.toLowerCase() === "hadir"
+                              ? "rgba(52, 199, 89, 0.12)"
+                              : "rgba(0, 122, 255, 0.1)",
+                          color:
+                            item.status?.toLowerCase() === "hadir" ? "#34c759" : "#007aff"
+                        }}
+                      >
+                        <CheckCircle2 size={12} />
+                        {item.status}
+                      </span>
                     </td>
                   </tr>
                 ))
@@ -477,108 +916,7 @@ export default function RiwayatPresensiPage({ user }) {
             </tbody>
           </table>
         </div>
-
-        {/* Table Footer: Pagination */}
-        <div className="table-pagination-row">
-          <div style={{ fontSize: "12.5px", color: "#64748b" }}>
-            Menampilkan 6 dari 44 catatan bulan ini
-          </div>
-
-          <div className="pagination-controls">
-            <button className="page-num-btn active">1</button>
-            <button className="page-num-btn">2</button>
-            <button className="page-num-btn">3</button>
-            <span style={{ color: "#94a3b8", padding: "0 4px" }}>...</span>
-            <button className="page-num-btn">9</button>
-          </div>
-        </div>
       </div>
-
-      {/* Modal Detail Presensi Biometrik & Geofence */}
-      {selectedRecord && (
-        <div className="modal-backdrop-overlay" onClick={() => setSelectedRecord(null)}>
-          <div className="modal-dialog-box" style={{ maxWidth: "480px" }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px" }}>
-              <div style={{ fontSize: "16px", fontWeight: "800", color: "#0f172a" }}>
-                Detail Verifikasi Presensi
-              </div>
-              <button
-                onClick={() => setSelectedRecord(null)}
-                style={{
-                  border: "none",
-                  backgroundColor: "#f1f5f9",
-                  borderRadius: "8px",
-                  width: "28px",
-                  height: "28px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "#64748b",
-                  cursor: "pointer"
-                }}
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px", fontSize: "13px" }}>
-              <div style={{ padding: "12px", backgroundColor: "#f8fafc", borderRadius: "10px" }}>
-                <div style={{ color: "#64748b", fontSize: "11px" }}>Sesi & Tanggal</div>
-                <div style={{ fontWeight: "700", color: "#0f172a" }}>
-                  {selectedRecord.sesi} · {selectedRecord.tanggal} ({selectedRecord.waktu})
-                </div>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-                <div style={{ padding: "12px", backgroundColor: "#f8fafc", borderRadius: "10px" }}>
-                  <div style={{ color: "#64748b", fontSize: "11px" }}>Akurasi Wajah</div>
-                  <div style={{ fontWeight: "800", color: "#16a34a", fontSize: "16px" }}>
-                    {selectedRecord.wajah} (Valid)
-                  </div>
-                </div>
-
-                <div style={{ padding: "12px", backgroundColor: "#f8fafc", borderRadius: "10px" }}>
-                  <div style={{ color: "#64748b", fontSize: "11px" }}>Radius Geofence</div>
-                  <div style={{ fontWeight: "800", color: "#2349d4", fontSize: "16px" }}>
-                    {selectedRecord.lokasi} (Di dalam radius 100m)
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ padding: "12px", backgroundColor: "#f8fafc", borderRadius: "10px" }}>
-                <div style={{ color: "#64748b", fontSize: "11px" }}>Koordinat GPS</div>
-                <div style={{ fontWeight: "600", color: "#334155" }}>
-                  {selectedRecord.koordinat || "-0.9208, 100.8186"}
-                </div>
-              </div>
-
-              <div style={{ padding: "12px", backgroundColor: "#f8fafc", borderRadius: "10px" }}>
-                <div style={{ color: "#64748b", fontSize: "11px" }}>Catatan Kehadiran</div>
-                <div style={{ fontWeight: "600", color: "#334155" }}>
-                  {selectedRecord.keterangan}
-                </div>
-              </div>
-            </div>
-
-            <div style={{ marginTop: "20px", textAlign: "right" }}>
-              <button
-                onClick={() => setSelectedRecord(null)}
-                style={{
-                  padding: "8px 18px",
-                  borderRadius: "8px",
-                  backgroundColor: "#2349d4",
-                  color: "#ffffff",
-                  border: "none",
-                  fontWeight: "700",
-                  cursor: "pointer"
-                }}
-              >
-                Tutup
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

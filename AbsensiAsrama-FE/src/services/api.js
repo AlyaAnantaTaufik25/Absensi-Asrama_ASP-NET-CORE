@@ -1,8 +1,11 @@
 // API Service untuk menghubungkan Frontend (React) ke Backend (ASP.NET Core Minimal API)
-// Di mode dev (port Vite apapun kecuali port backend 5250), arahkan ke backend 5250
+// Jika diakses langsung dari server ASP.NET Core (port 5250, 7238, dll), gunakan relative path ""
+// Hanya jika di mode dev Vite (port 5173/3000), arahkan ke host backend
 export const API_BASE_URL =
-  typeof window !== "undefined" && window.location.port !== "5250"
-    ? "http://localhost:5250"
+  typeof window !== "undefined"
+    ? (window.location.port.startsWith("517") || window.location.port === "3000"
+        ? (window.location.protocol === "https:" ? "https://localhost:7238" : "http://localhost:5250")
+        : "")
     : "";
 
 /**
@@ -432,6 +435,375 @@ export async function getGedungFasil(userId) {
     console.warn("Backend gedung fasil error:", err);
     return null;
   }
+}
+
+/**
+ * Pengaturan Jam Sesi Presensi (Subuh 04:00-06:00, Malam 18:00-20:30 default)
+ */
+export async function getSessionSettings() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/settings/session`);
+    if (res.ok) {
+      const data = await res.json();
+      localStorage.setItem("mynava_session_settings", JSON.stringify(data));
+      return data;
+    }
+  } catch (err) {
+    console.warn("Gagal mengambil setting sesi dari backend, gunakan cache lokal:", err);
+  }
+  const cached = localStorage.getItem("mynava_session_settings");
+  if (cached) {
+    try { return JSON.parse(cached); } catch {}
+  }
+  return {
+    subuhStart: "04:00",
+    subuhEnd: "06:00",
+    malamStart: "18:00",
+    malamEnd: "20:30",
+    updatedBy: "Fasilitator"
+  };
+}
+
+export async function updateSessionSettings(settingsData) {
+  // Update local cache immediately
+  const payload = {
+    subuhStart: settingsData.subuhStart || "04:00",
+    subuhEnd: settingsData.subuhEnd || "06:00",
+    malamStart: settingsData.malamStart || "18:00",
+    malamEnd: settingsData.malamEnd || "20:30",
+    updatedBy: settingsData.updatedBy || "Fasilitator",
+    updatedAt: new Date().toISOString()
+  };
+  localStorage.setItem("mynava_session_settings", JSON.stringify(payload));
+  window.dispatchEvent(new CustomEvent("mynava_session_updated", { detail: payload }));
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/settings/session`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    console.warn("Tersimpan secara lokal (backend offline):", err);
+  }
+  return { success: true, message: "Pengaturan sesi tersimpan.", setting: payload };
+}
+
+/**
+ * Update Status Perizinan (Disetujui / Ditolak oleh Fasil)
+ */
+export async function updatePerizinanStatus(idIzin, status) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/perizinan/${idIzin}/status`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status })
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    console.warn("Gagal update status izin ke backend:", err);
+  }
+  return { success: true, message: `Status izin ${idIzin} diperbarui menjadi ${status}` };
+}
+
+/**
+ * Buku Tamu (CRUD & Checkout)
+ */
+export async function getBukuTamu() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/buku-tamu`);
+    if (res.ok) {
+      const data = await res.json();
+      localStorage.setItem("mynava_buku_tamu", JSON.stringify(data));
+      return data;
+    }
+  } catch (err) {
+    console.warn("Gagal ambil buku tamu dari backend:", err);
+  }
+  const cached = localStorage.getItem("mynava_buku_tamu");
+  return cached ? JSON.parse(cached) : [];
+}
+
+export async function createBukuTamu(tamuData) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/buku-tamu`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(tamuData)
+    });
+    if (res.ok) {
+      const saved = await res.json();
+      // Sync cache
+      const cached = localStorage.getItem("mynava_buku_tamu");
+      const list = cached ? JSON.parse(cached) : [];
+      localStorage.setItem("mynava_buku_tamu", JSON.stringify([saved, ...list]));
+      return saved;
+    }
+  } catch (err) {
+    console.warn("Simpan buku tamu lokal:", err);
+  }
+  const fallback = {
+    idTamu: Date.now(),
+    ...tamuData,
+    waktuKeluar: "—",
+    status: "Sedang berkunjung",
+    tanggal: new Date().toISOString().split("T")[0]
+  };
+  const cached = localStorage.getItem("mynava_buku_tamu");
+  const list = cached ? JSON.parse(cached) : [];
+  localStorage.setItem("mynava_buku_tamu", JSON.stringify([fallback, ...list]));
+  return fallback;
+}
+
+export async function checkoutBukuTamu(idTamu) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/buku-tamu/${idTamu}/checkout`, {
+      method: "PUT"
+    });
+    if (res.ok) return await res.json();
+  } catch (err) {
+    console.warn("Checkout buku tamu lokal:", err);
+  }
+  const cached = localStorage.getItem("mynava_buku_tamu");
+  if (cached) {
+    const list = JSON.parse(cached);
+    const updated = list.map((item) =>
+      item.idTamu === idTamu
+        ? { ...item, status: "Selesai berkunjung", waktuKeluar: new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) + " WIB" }
+        : item
+    );
+    localStorage.setItem("mynava_buku_tamu", JSON.stringify(updated));
+  }
+  return { success: true };
+}
+
+/**
+ * Keluar-Masuk Malam (CRUD & Kembali)
+ */
+export async function getKeluarMasuk() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/keluar-masuk`);
+    if (res.ok) {
+      const data = await res.json();
+      localStorage.setItem("mynava_keluar_masuk", JSON.stringify(data));
+      return data;
+    }
+  } catch (err) {
+    console.warn("Gagal ambil keluar-masuk dari backend:", err);
+  }
+  const cached = localStorage.getItem("mynava_keluar_masuk");
+  return cached ? JSON.parse(cached) : [];
+}
+
+export async function createKeluarMasuk(logData) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/keluar-masuk`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(logData)
+    });
+    if (res.ok) {
+      const saved = await res.json();
+      const cached = localStorage.getItem("mynava_keluar_masuk");
+      const list = cached ? JSON.parse(cached) : [];
+      localStorage.setItem("mynava_keluar_masuk", JSON.stringify([saved, ...list]));
+      return saved;
+    }
+  } catch (err) {
+    console.warn("Simpan keluar-masuk lokal:", err);
+  }
+  const fallback = {
+    idLog: Date.now(),
+    ...logData,
+    jamKembali: "—",
+    status: "Belum kembali",
+    tanggal: new Date().toISOString().split("T")[0]
+  };
+  const cached = localStorage.getItem("mynava_keluar_masuk");
+  const list = cached ? JSON.parse(cached) : [];
+  localStorage.setItem("mynava_keluar_masuk", JSON.stringify([fallback, ...list]));
+  return fallback;
+}
+
+export async function returnKeluarMasuk(idLog) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/keluar-masuk/${idLog}/kembali`, {
+      method: "PUT"
+    });
+    if (res.ok) return await res.json();
+  } catch (err) {
+    console.warn("Update status kembali lokal:", err);
+  }
+  const cached = localStorage.getItem("mynava_keluar_masuk");
+  if (cached) {
+    const list = JSON.parse(cached);
+    const updated = list.map((item) =>
+      item.idLog === idLog
+        ? { ...item, status: "Sudah kembali", jamKembali: new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) + " WIB" }
+        : item
+    );
+    localStorage.setItem("mynava_keluar_masuk", JSON.stringify(updated));
+  }
+  return { success: true };
+}
+
+/**
+ * Laporan Kejadian (CRUD & Status)
+ */
+export async function getLaporanKejadian() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/laporan-kejadian`);
+    if (res.ok) {
+      const data = await res.json();
+      localStorage.setItem("mynava_laporan_kejadian", JSON.stringify(data));
+      return data;
+    }
+  } catch (err) {
+    console.warn("Gagal ambil laporan kejadian dari backend:", err);
+  }
+  const cached = localStorage.getItem("mynava_laporan_kejadian");
+  return cached ? JSON.parse(cached) : [];
+}
+
+export async function createLaporanKejadian(laporanData) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/laporan-kejadian`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(laporanData)
+    });
+    if (res.ok) {
+      const saved = await res.json();
+      const cached = localStorage.getItem("mynava_laporan_kejadian");
+      const list = cached ? JSON.parse(cached) : [];
+      localStorage.setItem("mynava_laporan_kejadian", JSON.stringify([saved, ...list]));
+      return saved;
+    }
+  } catch (err) {
+    console.warn("Simpan laporan kejadian lokal:", err);
+  }
+  const fallback = {
+    idLaporan: Date.now(),
+    ...laporanData,
+    status: "Menunggu tindak lanjut",
+    dibuatPada: new Date().toISOString()
+  };
+  const cached = localStorage.getItem("mynava_laporan_kejadian");
+  const list = cached ? JSON.parse(cached) : [];
+  localStorage.setItem("mynava_laporan_kejadian", JSON.stringify([fallback, ...list]));
+  return fallback;
+}
+
+export async function updateLaporanKejadianStatus(idLaporan, status) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/laporan-kejadian/${idLaporan}/status`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status })
+    });
+    if (res.ok) return await res.json();
+  } catch (err) {
+    console.warn("Update status laporan lokal:", err);
+  }
+  const cached = localStorage.getItem("mynava_laporan_kejadian");
+  if (cached) {
+    const list = JSON.parse(cached);
+    const updated = list.map((item) =>
+      item.idLaporan === idLaporan ? { ...item, status } : item
+    );
+    localStorage.setItem("mynava_laporan_kejadian", JSON.stringify(updated));
+  }
+  return { success: true };
+}
+
+/**
+ * Event / Acara Kegiatan Asrama (Disimpan ke Database)
+ */
+export async function getEvents() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/events`);
+    if (res.ok) {
+      const data = await res.json();
+      localStorage.setItem("mynava_events_cache", JSON.stringify(data));
+      return data;
+    }
+  } catch (err) {
+    console.warn("Gagal memuat events dari backend, pakai cache:", err);
+  }
+  const cached = localStorage.getItem("mynava_events_cache");
+  return cached ? JSON.parse(cached) : [];
+}
+
+export async function createEvent(eventData) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/events`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(eventData)
+    });
+    if (res.ok) {
+      const saved = await res.json();
+      const cached = localStorage.getItem("mynava_events_cache");
+      const list = cached ? JSON.parse(cached) : [];
+      localStorage.setItem("mynava_events_cache", JSON.stringify([saved, ...list]));
+      return saved;
+    }
+  } catch (err) {
+    console.warn("Gagal simpan event ke backend, pakai fallback:", err);
+  }
+  const fallback = {
+    idEvent: Date.now(),
+    ...eventData,
+    status: eventData.status || "Akan Datang",
+    dibuatPada: new Date().toISOString()
+  };
+  const cached = localStorage.getItem("mynava_events_cache");
+  const list = cached ? JSON.parse(cached) : [];
+  localStorage.setItem("mynava_events_cache", JSON.stringify([fallback, ...list]));
+  return fallback;
+}
+
+export async function updateEvent(idEvent, eventData) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/events/${idEvent}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(eventData)
+    });
+    if (res.ok) return await res.json();
+  } catch (err) {
+    console.warn("Gagal update event di backend:", err);
+  }
+  const cached = localStorage.getItem("mynava_events_cache");
+  if (cached) {
+    const list = JSON.parse(cached);
+    const updated = list.map((e) => (e.idEvent === idEvent ? { ...e, ...eventData } : e));
+    localStorage.setItem("mynava_events_cache", JSON.stringify(updated));
+  }
+  return { success: true };
+}
+
+export async function deleteEvent(idEvent) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/events/${idEvent}`, {
+      method: "DELETE"
+    });
+    if (res.ok) return await res.json();
+  } catch (err) {
+    console.warn("Gagal delete event di backend:", err);
+  }
+  const cached = localStorage.getItem("mynava_events_cache");
+  if (cached) {
+    const list = JSON.parse(cached);
+    const filtered = list.filter((e) => e.idEvent !== idEvent);
+    localStorage.setItem("mynava_events_cache", JSON.stringify(filtered));
+  }
+  return { success: true };
 }
 
 

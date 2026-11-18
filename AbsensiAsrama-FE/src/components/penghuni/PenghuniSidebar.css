@@ -1,0 +1,242 @@
+/* ========================================================
+   PenghuniSidebar.css - Apple iOS Human Interface Dark Slate Teal Sidebar
+   ======================================================== */
+
+.penghuni-sidebar {
+  width: 250px;
+  background-color: #173847;
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  user-select: none;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Inter", system-ui, sans-serif;
+  z-index: 50;
+  padding: 28px 0 20px 0;
+  border-right: none;
+}
+
+/* Top Block (Profile + Navigation) */
+.penghuni-sidebar-top {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+/* Profile Section */
+.penghuni-profile-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 0 20px 24px 20px;
+}
+
+/* Bulletproof CSS Centered Avatar */
+.penghuni-avatar-ring {
+  width: 78px;
+  height: 78px;
+  border-radius: 50%;
+  padding: 3px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.45) 0%, rgba(56, 189, 248, 0.25) 50%, rgba(255, 255, 255, 0.08) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  margin: 0 auto;
+}
+
+.penghuni-avatar-inner {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #007aff 0%, #0051ba 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 23px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  line-height: 1;
+  text-align: center;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", sans-serif;
+  overflow: hidden;
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.3);
+}
+
+.penghuni-avatar-inner img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.penghuni-profile-name {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 12px 0 2px 0;
+  letter-spacing: -0.2px;
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+}
+
+.penghuni-profile-email {
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.65);
+  margin: 0;
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+}
+
+/* Nav Menu */
+.penghuni-nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 20px;
+  padding-right: 0;
+  margin: 0;
+  list-style: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.penghuni-nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 20px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.78);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-decoration: none;
+  box-sizing: border-box;
+  border-top-left-radius: 24px;
+  border-bottom-left-radius: 24px;
+}
+
+.penghuni-nav-item:hover:not(.active) {
+  color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.06);
+  margin-right: 14px;
+  border-radius: 12px;
+}
+
+/* Active Scooped Tab */
+.penghuni-nav-item.active {
+  background-color: #f4f6fa;
+  color: #173847;
+  font-weight: 700;
+  border-top-left-radius: 28px;
+  border-bottom-left-radius: 28px;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  margin-right: 0;
+  position: relative;
+  z-index: 10;
+}
+
+/* Top Concave Curve */
+.penghuni-nav-item.active::before {
+  content: "";
+  position: absolute;
+  top: -24px;
+  right: 0;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border-bottom-right-radius: 24px;
+  box-shadow: 6px 6px 0 0 #f4f6fa;
+  pointer-events: none;
+}
+
+/* Bottom Concave Curve */
+.penghuni-nav-item.active::after {
+  content: "";
+  position: absolute;
+  bottom: -24px;
+  right: 0;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border-top-right-radius: 24px;
+  box-shadow: 6px -6px 0 0 #f4f6fa;
+  pointer-events: none;
+}
+
+.penghuni-nav-item-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.penghuni-nav-badge {
+  margin-left: auto;
+  background-color: #ff3b30;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 10px;
+  line-height: 1.2;
+  box-shadow: 0 1px 3px rgba(255, 59, 48, 0.4);
+}
+
+.penghuni-nav-item.active .penghuni-nav-badge {
+  background-color: #ff3b30;
+  color: #ffffff;
+}
+
+/* Bottom Logout Section - Sudut Kiri Bawah (Red) */
+.penghuni-sidebar-footer {
+  padding: 16px 0 12px 20px;
+  margin-top: auto;
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.penghuni-logout-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: transparent;
+  border: none;
+  color: #ff3b30 !important;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 10px 14px;
+  border-radius: 12px;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.penghuni-logout-btn svg {
+  stroke: #ff3b30 !important;
+  color: #ff3b30 !important;
+}
+
+.penghuni-logout-btn:hover {
+  background-color: rgba(255, 59, 48, 0.12);
+  color: #ff453a !important;
+}

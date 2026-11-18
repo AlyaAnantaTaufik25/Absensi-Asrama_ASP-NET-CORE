@@ -2,6 +2,7 @@
  * Utilitas untuk Mengunduh Rekapitulasi Presensi & Perizinan Asrama
  * Mendukung ekspor ke format CSV / Excel (.csv & .xls) serta Cetak PDF Resmi
  */
+import { showToast } from "./toast";
 
 /**
  * Download data dalam format CSV yang kompatibel dengan Microsoft Excel (UTF-8 BOM)
@@ -11,7 +12,7 @@
  */
 export function downloadCSV(filename, headers, rows) {
   if (!rows || rows.length === 0) {
-    alert("Tidak ada data untuk diunduh.");
+    showToast("Tidak ada data untuk diunduh.", "warning");
     return false;
   }
 
@@ -48,7 +49,7 @@ export function downloadCSV(filename, headers, rows) {
  */
 export function downloadExcelHtml(filename, sheetTitle, headers, rows) {
   if (!rows || rows.length === 0) {
-    alert("Tidak ada data untuk diunduh.");
+    showToast("Tidak ada data untuk diunduh.", "warning");
     return false;
   }
 
@@ -114,13 +115,13 @@ export function printOfficialDocument({
   signerRole = "Fasilitator Lantai / Pembina"
 }) {
   if (!rows || rows.length === 0) {
-    alert("Tidak ada data untuk dicetak / diekspor ke PDF.");
+    showToast("Tidak ada data untuk dicetak / diekspor ke PDF.", "warning");
     return false;
   }
 
   const printWindow = window.open("", "_blank", "width=900,height=700");
   if (!printWindow) {
-    alert("Popup diblokir oleh browser. Harap izinkan pop-up untuk mencetak dokumen PDF.");
+    showToast("Popup diblokir oleh browser. Harap izinkan pop-up untuk mencetak dokumen PDF.", "error");
     return false;
   }
 
