@@ -44,7 +44,7 @@ export default function PresensiPage({ user, setActiveTab }) {
   );
 
   // Location & Geofence State
-  // Mode: "real" (default: GPS fisik asli dari browser), "inside" (simulasi ~15m), "outside" (simulasi ~145m)
+  // Mode: "real" (default: GPS fisik asli dari browser), "inside" (simulasi ~15m), "outside" (simulasi Pasar Baru ~2.1km)
   const [locationMode, setLocationMode] = useState("real");
   const [isLocating, setIsLocating] = useState(true);
   const [gpsError, setGpsError] = useState("");
@@ -63,6 +63,24 @@ export default function PresensiPage({ user, setActiveTab }) {
     setIsLocating(true);
     setGpsError("");
 
+    // 1. Ambil koordinat awal secara cepat
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setUserLocation({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: Math.round(pos.coords.accuracy || 5)
+        });
+        setIsLocating(false);
+        setGpsError("");
+      },
+      (err) => {
+        console.warn("getCurrentPosition warning:", err);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+
+    // 2. Pantau pergerakan realtime perangkat
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
         setUserLocation({
@@ -77,14 +95,14 @@ export default function PresensiPage({ user, setActiveTab }) {
         console.warn("Gagal mendapatkan lokasi GPS asli:", err);
         setIsLocating(false);
         if (err.code === 1) {
-          setGpsError("Izin lokasi ditolak browser. Klik ikon izin/gembok di address bar dan izinkan akses lokasi (GPS).");
+          setGpsError("Izin akses lokasi (GPS) ditolak browser. Klik ikon gembok/izin di address bar browser dan pilih 'Izinkan Lokasi'.");
         } else if (err.code === 2) {
-          setGpsError("Sinyal GPS tidak ditemukan. Pastikan layanan lokasi pada HP/laptop Anda aktif.");
+          setGpsError("Sinyal GPS tidak ditemukan. Pastikan layanan lokasi/GPS pada HP atau laptop Anda sudah aktif.");
         } else {
           setGpsError("Waktu pencarian GPS habis. Silakan klik tombol 'Deteksi Ulang GPS'.");
         }
       },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
     );
 
     return () => {
@@ -108,10 +126,11 @@ export default function PresensiPage({ user, setActiveTab }) {
     setLocationMode("outside");
     setIsLocating(false);
     setGpsError("");
+    // Koordinat Pasar Baru Pauh Padang (berjarak ~2.1 km dari asrama Unand)
     setUserLocation({
-      lat: currentAsrama.lat + 0.0013,
-      lng: currentAsrama.lng + 0.0009,
-      accuracy: 8.0
+      lat: -0.914200,
+      lng: 100.435000,
+      accuracy: 10.0
     });
   };
 
@@ -124,7 +143,7 @@ export default function PresensiPage({ user, setActiveTab }) {
 
   // Calculate distance in meters to the selected asrama's central point
   const currentDistance = useMemo(() => {
-    if (!userLocation) return 999999;
+    if (!userLocation) return null;
     return calculateDistanceMeters(
       userLocation.lat,
       userLocation.lng,
@@ -134,15 +153,21 @@ export default function PresensiPage({ user, setActiveTab }) {
   }, [userLocation, currentAsrama]);
 
   // Max allowed radius is strictly 100 meters
-  // GPS accuracy must be <= 150m to be trusted (desktop/laptop Wi-Fi geolocation is often wrong)
-  const gpsAccuracy = userLocation?.accuracy ?? 999999;
-  const isGpsAccurate = locationMode !== "real" || gpsAccuracy <= 150;
-  const isWithinRadius = userLocation != null && currentDistance <= 100 && isGpsAccurate;
+  const isWithinRadius = userLocation != null && currentDistance !== null && currentDistance <= 100;
 
-  // Session Time Checker
-  const sessionInfo = useMemo(() => checkPresensiSession(), []);
-  const [overrideSessionForDemo, setOverrideSessionForDemo] = useState(true); // default true for convenient testing
-  const isSessionValid = sessionInfo.isActive || overrideSessionForDemo;
+  // Realtime Session Time Checker (04:00 - 06:00 & 18:00 - 20:30 WIB)
+  const [sessionInfo, setSessionInfo] = useState(() => checkPresensiSession());
+
+  // Update status sesi setiap 5 detik agar selalu realtime mengikuti jam perangkat
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setSessionInfo(checkPresensiSession());
+    }, 5000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Presensi hanya berlaku jika sesi waktu benar-benar aktif (ketat: Subuh 04.00-06.00 & Malam 18.00-20.30 WIB)
+  const isSessionValid = sessionInfo.isActive;
 
   // Camera states
   const [cameraActive, setCameraActive] = useState(false);
@@ -244,22 +269,30 @@ export default function PresensiPage({ user, setActiveTab }) {
       {
         id: "session",
         title: "Sesi Waktu Presensi Aktif",
-        desc: "Absen Subuh (04.00 - 06.00) atau Absen Malam (18.00 - 20.30 WIB)",
+        desc: isSessionValid
+          ? `Sesi ${sessionInfo.session} (${sessionInfo.timeRange}) sedang berlangsung`
+          : `Saat ini di luar jam sesi presensi. ${sessionInfo.statusText}. Jadwal: Subuh (04.00 - 06.00) & Malam (18.00 - 20.30 WIB)`,
         status: isSessionValid,
         badge: isSessionValid
-          ? sessionInfo.isActive
-            ? `${sessionInfo.session} Sedang Berlangsung`
-            : "Sesi Disimulasikan Aktif (Demo)"
-          : "Di Luar Jam Sesi"
+          ? `Sesi ${sessionInfo.session} Aktif`
+          : "Di Luar Jam Sesi (Terkunci)"
       },
       {
         id: "geofence",
         title: "Radius Geofence Maksimal 100 Meter",
-        desc: `Jarak Anda: ${currentDistance} meter dari titik tengah ${currentAsrama.name} (Batas: 100 m)`,
+        desc: isLocating
+          ? `Mendeteksi lokasi GPS untuk menghitung jarak ke ${currentAsrama.name}...`
+          : !userLocation
+          ? `Akses lokasi (GPS) diperlukan untuk validasi jarak ke ${currentAsrama.name}`
+          : `Jarak Anda: ${currentDistance?.toLocaleString("id-ID") || 0} meter dari titik tengah ${currentAsrama.name} (Batas: 100 m)`,
         status: isWithinRadius,
-        badge: isWithinRadius
+        badge: isLocating
+          ? "Mencari GPS..."
+          : !userLocation
+          ? "Lokasi Belum Terbaca"
+          : isWithinRadius
           ? `Lolos (${currentDistance} m <= 100 m)`
-          : `Gagal (${currentDistance} m > 100 m)`
+          : `Gagal (${currentDistance?.toLocaleString("id-ID")} m > 100 m)`
       },
       {
         id: "biometric",
@@ -284,8 +317,13 @@ export default function PresensiPage({ user, setActiveTab }) {
   const handleSubmit = (e) => {
     e.preventDefault();
 
+    if (!isSessionValid) {
+      alert("Absensi Ditolak! Saat ini berada di luar rentang waktu sesi presensi resmi.\n\nJadwal resmi presensi asrama:\n• Sesi Subuh: 04.00 - 06.00 WIB\n• Sesi Malam: 18.00 - 20.30 WIB");
+      return;
+    }
+
     if (!isWithinRadius) {
-      alert("Absensi ditolak! Anda berada di luar radius 100 meter dari gedung asrama.");
+      alert(`Absensi Ditolak! Anda terdeteksi berada pada jarak ${currentDistance?.toLocaleString("id-ID") || "jauh"} meter dari titik tengah ${currentAsrama.name} (melebihi batas radius 100 meter).`);
       return;
     }
 
@@ -380,7 +418,8 @@ export default function PresensiPage({ user, setActiveTab }) {
 
               <span
                 style={{
-                  backgroundColor: "rgba(255, 255, 255, 0.18)",
+                  backgroundColor: isSessionValid ? "rgba(16, 185, 129, 0.25)" : "rgba(239, 68, 68, 0.25)",
+                  border: isSessionValid ? "1px solid rgba(74, 222, 128, 0.5)" : "1px solid rgba(248, 113, 113, 0.5)",
                   backdropFilter: "blur(4px)",
                   padding: "5px 14px",
                   borderRadius: "9999px",
@@ -393,13 +432,15 @@ export default function PresensiPage({ user, setActiveTab }) {
               >
                 <span
                   style={{
-                    width: "7px",
-                    height: "7px",
+                    width: "8px",
+                    height: "8px",
                     borderRadius: "50%",
-                    backgroundColor: isSessionValid ? "#4ade80" : "#f59e0b"
+                    backgroundColor: isSessionValid ? "#4ade80" : "#f87171"
                   }}
                 />
-                {sessionInfo.isActive ? sessionInfo.statusText : "Jadwal: 04.00-06.00 & 18.00-20.30"}
+                {isSessionValid
+                  ? `Sesi ${sessionInfo.session} (${sessionInfo.statusText})`
+                  : `Sesi Ditutup · ${sessionInfo.statusText}`}
               </span>
             </div>
 
@@ -553,28 +594,83 @@ export default function PresensiPage({ user, setActiveTab }) {
                   fontWeight: "700",
                   padding: "5px 12px",
                   borderRadius: "999px",
-                  backgroundColor: isWithinRadius ? "#dcfce7" : "#fee2e2",
-                  color: isWithinRadius ? "#15803d" : "#b91c1c",
+                  backgroundColor: isLocating
+                    ? "#eff6ff"
+                    : !userLocation
+                    ? "#fef2f2"
+                    : isWithinRadius
+                    ? "#dcfce7"
+                    : "#fee2e2",
+                  color: isLocating
+                    ? "#1d4ed8"
+                    : !userLocation
+                    ? "#b91c1c"
+                    : isWithinRadius
+                    ? "#15803d"
+                    : "#b91c1c",
                   display: "inline-flex",
                   alignItems: "center",
                   gap: "5px",
-                  border: isWithinRadius ? "1px solid #86efac" : "1px solid #fca5a5"
+                  border: isLocating
+                    ? "1px solid #bfdbfe"
+                    : !userLocation
+                    ? "1px solid #fca5a5"
+                    : isWithinRadius
+                    ? "1px solid #86efac"
+                    : "1px solid #fca5a5"
                 }}
               >
-                {isWithinRadius ? (
+                {isLocating ? (
+                  <>
+                    <RefreshCw size={14} style={{ animation: "spin 1.5s linear infinite" }} /> Mendeteksi GPS...
+                  </>
+                ) : !userLocation ? (
+                  <>
+                    <AlertCircle size={14} /> GPS Belum Terbaca
+                  </>
+                ) : isWithinRadius ? (
                   <>
                     <CheckCircle2 size={14} /> Di Dalam Radius ({currentDistance} m)
                   </>
                 ) : (
                   <>
-                    <XCircle size={14} /> Di Luar Radius ({currentDistance} m &gt; 100m)
+                    <XCircle size={14} /> Di Luar Radius ({currentDistance?.toLocaleString("id-ID")} m &gt; 100m)
                   </>
                 )}
               </span>
             </div>
 
-            {/* Low GPS Accuracy Warning — laptop/desktop Wi-Fi geolocation warning */}
-            {locationMode === "real" && userLocation && !isGpsAccurate && (
+            {/* Catatan Info Jika Berada di Luar Radius (misal di Pasar Baru) */}
+            {!isLocating && userLocation && !isWithinRadius && (
+              <div
+                style={{
+                  backgroundColor: "#fef2f2",
+                  border: "1.5px solid #fca5a5",
+                  borderRadius: "10px",
+                  padding: "11px 15px",
+                  color: "#991b1b",
+                  fontSize: "12px",
+                  fontWeight: "600",
+                  marginBottom: "14px",
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: "10px"
+                }}
+              >
+                <XCircle size={17} color="#dc2626" style={{ flexShrink: 0, marginTop: "1px" }} />
+                <div>
+                  <div style={{ fontWeight: "800", marginBottom: "2px", fontSize: "12.5px" }}>
+                    Presensi Ditolak: Anda Berada di Luar Area Asrama
+                  </div>
+                  <div>
+                    Posisi Anda terdeteksi berjarak <strong>{currentDistance?.toLocaleString("id-ID")} meter</strong> dari titik tengah <strong>{currentAsrama.name}</strong>. Batas maksimal yang diperbolehkan adalah <strong>100 meter</strong>. Silakan kembali ke lingkungan gedung asrama untuk melakukan presensi.
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Low GPS Accuracy Warning (Laptop/Desktop Wi-Fi Geolocation) */}
+            {locationMode === "real" && userLocation && userLocation.accuracy > 150 && (
               <div
                 style={{
                   backgroundColor: "#fffbeb",
@@ -592,8 +688,8 @@ export default function PresensiPage({ user, setActiveTab }) {
               >
                 <AlertCircle size={16} color="#d97706" style={{ flexShrink: 0, marginTop: "1px" }} />
                 <div>
-                  <div style={{ fontWeight: "800", marginBottom: "3px" }}>⚠️ Akurasi GPS Tidak Memadai (±{gpsAccuracy} m)</div>
-                  <div>Perangkat Anda menggunakan Wi-Fi/IP geolocation yang tidak akurat. Koordinat yang terdeteksi mungkin salah besar. <strong>Gunakan smartphone dengan GPS hardware aktif</strong> untuk absensi yang valid. Pastikan mode Lokasi di HP Anda diset ke "Presisi Tinggi (GPS + Wi-Fi)".</div>
+                  <div style={{ fontWeight: "800", marginBottom: "3px" }}>Informasi Akurasi Lokasi (±{userLocation.accuracy} m)</div>
+                  <div>Browser perangkat mendeteksi perkiraan lokasi via jaringan/Wi-Fi. Untuk tingkat presisi terbaik (akurasi tinggi hingga 5-10 meter), buka web ini melalui <strong>smartphone dengan GPS aktif</strong>.</div>
                 </div>
               </div>
             )}
@@ -718,10 +814,10 @@ export default function PresensiPage({ user, setActiveTab }) {
                   Jarak ke Titik Tengah
                 </div>
                 <div style={{ fontSize: "17px", fontWeight: "800", color: isWithinRadius ? "#15803d" : "#b91c1c", marginTop: "2px" }}>
-                  {isLocating ? "Menghitung..." : userLocation ? `${currentDistance.toLocaleString("id-ID")} Meter` : "—"}
+                  {isLocating ? "Menghitung..." : currentDistance != null ? `${currentDistance.toLocaleString("id-ID")} Meter` : "—"}
                 </div>
                 <div style={{ fontSize: "11px", color: isWithinRadius ? "#16a34a" : "#dc2626", fontWeight: "600" }}>
-                  {isLocating ? "Menunggu GPS" : isWithinRadius ? "✓ Dalam Batas 100 m" : "✕ Melebihi Batas 100 m"}
+                  {isLocating ? "Menunggu GPS" : !userLocation ? "Lokasi belum terbaca" : isWithinRadius ? "✓ Dalam Batas 100 m" : `✕ Di Luar Batas (${currentDistance?.toLocaleString("id-ID")} m > 100 m)`}
                 </div>
               </div>
             </div>
@@ -766,6 +862,7 @@ export default function PresensiPage({ user, setActiveTab }) {
                 <button
                   type="button"
                   onClick={handleSetSimulationInside}
+                  title="Simulasi posisi berada di dalam radius asrama (15 meter)"
                   style={{
                     backgroundColor: locationMode === "inside" ? "#16a34a" : "#ffffff",
                     color: locationMode === "inside" ? "#ffffff" : "#334155",
@@ -782,6 +879,7 @@ export default function PresensiPage({ user, setActiveTab }) {
                 <button
                   type="button"
                   onClick={handleSetSimulationOutside}
+                  title="Simulasi posisi di Pasar Baru Pauh Padang (~2.1 km dari asrama)"
                   style={{
                     backgroundColor: locationMode === "outside" ? "#dc2626" : "#ffffff",
                     color: locationMode === "outside" ? "#ffffff" : "#334155",
@@ -793,7 +891,7 @@ export default function PresensiPage({ user, setActiveTab }) {
                     cursor: "pointer"
                   }}
                 >
-                  Simulasi Luar Asrama (~145 m)
+                  Simulasi Pasar Baru (~2.1 km)
                 </button>
                 <button
                   type="button"
@@ -890,8 +988,31 @@ export default function PresensiPage({ user, setActiveTab }) {
                 }}
               />
 
+              {/* Warning alert if outside session time */}
+              {!isSessionValid && (
+                <div
+                  style={{
+                    backgroundColor: "#fff7ed",
+                    border: "1.5px solid #fdba74",
+                    borderRadius: "10px",
+                    padding: "10px 14px",
+                    color: "#9a3412",
+                    fontSize: "12.5px",
+                    fontWeight: "600",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px"
+                  }}
+                >
+                  <Clock size={18} color="#ea580c" style={{ flexShrink: 0 }} />
+                  <div>
+                    <strong>Sesi Presensi Belum Dibuka:</strong> Presensi hanya dapat diambil pada <strong>Sesi Subuh (04.00 - 06.00 WIB)</strong> atau <strong>Sesi Malam (18.00 - 20.30 WIB)</strong>. Saat ini: {sessionInfo.statusText}.
+                  </div>
+                </div>
+              )}
+
               {/* Warning alert if outside radius */}
-              {!isWithinRadius && (
+              {!isLocating && userLocation && !isWithinRadius && (
                 <div
                   style={{
                     backgroundColor: "#fef2f2",
@@ -906,9 +1027,9 @@ export default function PresensiPage({ user, setActiveTab }) {
                     gap: "8px"
                   }}
                 >
-                  <AlertCircle size={18} color="#dc2626" />
+                  <AlertCircle size={18} color="#dc2626" style={{ flexShrink: 0 }} />
                   <div>
-                    <strong>Absensi Terkunci:</strong> Anda berada di jarak {currentDistance} meter (melebihi batas radius 100 meter). Silakan kembali ke area gedung asrama untuk dapat melakukan absensi.
+                    <strong>Absensi Terkunci (Radius):</strong> Anda berada di jarak {currentDistance?.toLocaleString("id-ID")} meter (melebihi batas radius 100 meter dari {currentAsrama.name}). Silakan berada di area gedung asrama untuk melakukan absensi.
                   </div>
                 </div>
               )}
@@ -1106,16 +1227,16 @@ export default function PresensiPage({ user, setActiveTab }) {
                   alignItems: "center",
                   justifyContent: "space-between",
                   padding: "10px 12px",
-                  backgroundColor: "#f8fafc",
+                  backgroundColor: sessionInfo.isSubuh ? "#f0fdf4" : "#f8fafc",
                   borderRadius: "12px",
-                  border: "1px solid #f1f5f9"
+                  border: sessionInfo.isSubuh ? "1.5px solid #86efac" : "1px solid #f1f5f9"
                 }}
               >
                 <div>
                   <div style={{ fontSize: "13px", fontWeight: "700", color: "#0f172a" }}>
                     Sesi Subuh
                   </div>
-                  <div style={{ fontSize: "11px", color: "#64748b" }}>
+                  <div style={{ fontSize: "11px", color: sessionInfo.isSubuh ? "#15803d" : "#64748b" }}>
                     Pukul 04.00 - 06.00 WIB
                   </div>
                 </div>
@@ -1125,11 +1246,11 @@ export default function PresensiPage({ user, setActiveTab }) {
                     fontWeight: "700",
                     padding: "3px 8px",
                     borderRadius: "6px",
-                    backgroundColor: "#e0e7ff",
-                    color: "#3730a3"
+                    backgroundColor: sessionInfo.isSubuh ? "#dcfce7" : "#f1f5f9",
+                    color: sessionInfo.isSubuh ? "#15803d" : "#64748b"
                   }}
                 >
-                  Pagi
+                  {sessionInfo.isSubuh ? "✓ Sedang Dibuka" : "Pagi"}
                 </span>
               </div>
 
@@ -1140,16 +1261,16 @@ export default function PresensiPage({ user, setActiveTab }) {
                   alignItems: "center",
                   justifyContent: "space-between",
                   padding: "10px 12px",
-                  backgroundColor: "#f8fafc",
+                  backgroundColor: sessionInfo.isMalam ? "#f0fdf4" : "#f8fafc",
                   borderRadius: "12px",
-                  border: "1px solid #f1f5f9"
+                  border: sessionInfo.isMalam ? "1.5px solid #86efac" : "1px solid #f1f5f9"
                 }}
               >
                 <div>
                   <div style={{ fontSize: "13px", fontWeight: "700", color: "#0f172a" }}>
                     Sesi Malam (Maghrib & Isya)
                   </div>
-                  <div style={{ fontSize: "11px", color: "#64748b" }}>
+                  <div style={{ fontSize: "11px", color: sessionInfo.isMalam ? "#15803d" : "#64748b" }}>
                     Pukul 18.00 - 20.30 WIB
                   </div>
                 </div>
@@ -1159,11 +1280,11 @@ export default function PresensiPage({ user, setActiveTab }) {
                     fontWeight: "700",
                     padding: "3px 8px",
                     borderRadius: "6px",
-                    backgroundColor: "#e0e7ff",
-                    color: "#3730a3"
+                    backgroundColor: sessionInfo.isMalam ? "#dcfce7" : "#f1f5f9",
+                    color: sessionInfo.isMalam ? "#15803d" : "#64748b"
                   }}
                 >
-                  Malam
+                  {sessionInfo.isMalam ? "✓ Sedang Dibuka" : "Malam"}
                 </span>
               </div>
             </div>
