@@ -1,6 +1,7 @@
 // API Service untuk menghubungkan Frontend (React) ke Backend (ASP.NET Core Minimal API)
+// Di mode dev (port Vite apapun kecuali port backend 5250), arahkan ke backend 5250
 export const API_BASE_URL =
-  typeof window !== "undefined" && window.location.port === "5173"
+  typeof window !== "undefined" && window.location.port !== "5250"
     ? "http://localhost:5250"
     : "";
 
@@ -12,7 +13,7 @@ export async function checkBackendStatus() {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 2000);
 
-    const res = await fetch(`${API_BASE_URL}/api/db-check`, {
+    const res = await fetch(`${API_BASE_URL}/api/pingdb`, {
       method: "GET",
       signal: controller.signal
     });
@@ -88,6 +89,35 @@ export async function getUsers() {
     return null;
   }
 }
+
+/**
+ * Ambil data penghuni saja (role=penghuni/mahasiswa)
+ */
+export async function getPenghuni() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/users/penghuni`);
+    if (!res.ok) throw new Error("Gagal mengambil data penghuni");
+    return await res.json();
+  } catch (err) {
+    console.warn("Backend penghuni error:", err);
+    return [];
+  }
+}
+
+/**
+ * Ambil data fasil saja (role=fasil)
+ */
+export async function getFasil() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/users/fasil`);
+    if (!res.ok) throw new Error("Gagal mengambil data fasil");
+    return await res.json();
+  } catch (err) {
+    console.warn("Backend fasil error:", err);
+    return [];
+  }
+}
+
 
 /**
  * Kirim presensi ke backend
