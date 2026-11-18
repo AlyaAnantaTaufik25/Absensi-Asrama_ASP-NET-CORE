@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Check, X, Search, Filter, RotateCcw, UserCheck, AlertCircle, Clock } from "lucide-react";
+import { Check, X, Search, Filter, RotateCcw, UserCheck, AlertCircle, Clock, Download, Printer } from "lucide-react";
 import { getUsers, getPresensi, recordPresensi } from "../../services/api";
+import { downloadCSV, printOfficialDocument } from "../../utils/exportUtils";
 
 export default function PresensiLantaiPage() {
   const [modalOpen, setModalOpen] = useState(false);
@@ -111,6 +112,55 @@ export default function PresensiLantaiPage() {
     setFilterRoom("semua");
   };
 
+  const handleExportCSV = () => {
+    if (filteredAttendance.length === 0) {
+      alert("Tidak ada data presensi lantai untuk diunduh.");
+      return;
+    }
+    const headers = ["No", "Kamar", "Nama Penghuni", "NIM", "Jenis Kelamin", "Waktu Absen", "Radius", "Status Presensi", "Keterangan"];
+    const rows = filteredAttendance.map((item, idx) => [
+      idx + 1,
+      item.room,
+      item.name,
+      item.nim,
+      item.gender,
+      item.time,
+      item.radius,
+      item.status,
+      item.keterangan
+    ]);
+    downloadCSV(`Rekap_Presensi_Lantai_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+  };
+
+  const handlePrintPDF = () => {
+    if (filteredAttendance.length === 0) {
+      alert("Tidak ada data presensi lantai untuk dicetak.");
+      return;
+    }
+    const headers = ["Kamar", "Nama Penghuni", "NIM", "Waktu", "Status", "Keterangan"];
+    const rows = filteredAttendance.map((item) => [
+      item.room,
+      item.name,
+      item.nim,
+      item.time,
+      item.status,
+      item.keterangan
+    ]);
+    printOfficialDocument({
+      title: "REKAPITULASI PRESENSI LANTAI BINAAN ASRAMA",
+      subtitle: "Monitoring Kehadiran Mahasiswa Penghuni Lantai Asrama Universitas Andalas",
+      metaInfo: [
+        { label: "Unit Fasilitator", value: "Fasilitator Lantai Binaan Asrama Unand" },
+        { label: "Ringkasan Kehadiran", value: `${countHadir} Hadir · ${countIzin} Izin/Sakit · ${countBelum} Belum Absen` },
+        { label: "Tanggal Pencatatan", value: new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) }
+      ],
+      headers,
+      rows,
+      signerName: "Fasilitator Lantai",
+      signerRole: "Fasilitator Pendamping Asrama"
+    });
+  };
+
   const handleOpenManual = (item) => {
     setSelectedStudent(item);
     setManualStatus("Hadir");
@@ -185,43 +235,92 @@ export default function PresensiLantaiPage() {
           </p>
         </div>
 
-        {/* Attendance Counter on Right */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "16px",
-            backgroundColor: "#ffffff",
-            padding: "10px 18px",
-            borderRadius: "14px",
-            border: "1px solid #e2e8f0",
-            boxShadow: "0 1px 3px rgba(0, 0, 0, 0.04)"
-          }}
-        >
-          <div style={{ textAlign: "center", minWidth: "55px" }}>
-            <div style={{ fontSize: "11px", color: "#64748b", fontWeight: "700", textTransform: "uppercase" }}>
-              Hadir
-            </div>
-            <div style={{ fontSize: "20px", fontWeight: "800", color: "#15803d" }}>
-              {countHadir}
-            </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+          {/* Export Buttons */}
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <button
+              type="button"
+              onClick={handleExportCSV}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                backgroundColor: "#2563eb",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: "10px",
+                padding: "9px 15px",
+                fontSize: "12.5px",
+                fontWeight: "600",
+                cursor: "pointer",
+                boxShadow: "0 2px 6px rgba(37, 99, 235, 0.25)"
+              }}
+            >
+              <Download size={14} />
+              <span>Unduh Rekap (.csv)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handlePrintPDF}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                backgroundColor: "#ffffff",
+                color: "#0f172a",
+                border: "1px solid #cbd5e1",
+                borderRadius: "10px",
+                padding: "9px 14px",
+                fontSize: "12.5px",
+                fontWeight: "600",
+                cursor: "pointer",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.04)"
+              }}
+            >
+              <Printer size={14} color="#2563eb" />
+              <span>Cetak PDF</span>
+            </button>
           </div>
-          <div style={{ width: "1px", height: "28px", backgroundColor: "#e2e8f0" }} />
-          <div style={{ textAlign: "center", minWidth: "55px" }}>
-            <div style={{ fontSize: "11px", color: "#64748b", fontWeight: "700", textTransform: "uppercase" }}>
-              Izin/Sakit
+
+          {/* Attendance Counter on Right */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "16px",
+              backgroundColor: "#ffffff",
+              padding: "10px 18px",
+              borderRadius: "14px",
+              border: "1px solid #e2e8f0",
+              boxShadow: "0 1px 3px rgba(0, 0, 0, 0.04)"
+            }}
+          >
+            <div style={{ textAlign: "center", minWidth: "55px" }}>
+              <div style={{ fontSize: "11px", color: "#64748b", fontWeight: "700", textTransform: "uppercase" }}>
+                Hadir
+              </div>
+              <div style={{ fontSize: "20px", fontWeight: "800", color: "#15803d" }}>
+                {countHadir}
+              </div>
             </div>
-            <div style={{ fontSize: "20px", fontWeight: "800", color: "#2563eb" }}>
-              {countIzin}
+            <div style={{ width: "1px", height: "28px", backgroundColor: "#e2e8f0" }} />
+            <div style={{ textAlign: "center", minWidth: "55px" }}>
+              <div style={{ fontSize: "11px", color: "#64748b", fontWeight: "700", textTransform: "uppercase" }}>
+                Izin/Sakit
+              </div>
+              <div style={{ fontSize: "20px", fontWeight: "800", color: "#2563eb" }}>
+                {countIzin}
+              </div>
             </div>
-          </div>
-          <div style={{ width: "1px", height: "28px", backgroundColor: "#e2e8f0" }} />
-          <div style={{ textAlign: "center", minWidth: "55px" }}>
-            <div style={{ fontSize: "11px", color: "#64748b", fontWeight: "700", textTransform: "uppercase" }}>
-              Belum
-            </div>
-            <div style={{ fontSize: "20px", fontWeight: "800", color: "#ea580c" }}>
-              {countBelum}
+            <div style={{ width: "1px", height: "28px", backgroundColor: "#e2e8f0" }} />
+            <div style={{ textAlign: "center", minWidth: "55px" }}>
+              <div style={{ fontSize: "11px", color: "#64748b", fontWeight: "700", textTransform: "uppercase" }}>
+                Belum
+              </div>
+              <div style={{ fontSize: "20px", fontWeight: "800", color: "#ea580c" }}>
+                {countBelum}
+              </div>
             </div>
           </div>
         </div>

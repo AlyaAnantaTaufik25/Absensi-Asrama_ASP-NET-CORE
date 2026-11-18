@@ -11,9 +11,11 @@ import {
   ChevronDown,
   X,
   TrendingUp,
-  UserCheck
+  UserCheck,
+  Printer
 } from "lucide-react";
 import { getUsers, getPresensi } from "../../services/api";
+import { downloadExcelHtml, printOfficialDocument } from "../../utils/exportUtils";
 
 export default function RekapKehadiranPage() {
   const [filterSession, setFilterSession] = useState("semua"); // "semua" | "subuh" | "maghrib"
@@ -75,10 +77,70 @@ export default function RekapKehadiranPage() {
   }, []);
 
   const handleExport = () => {
-    setDownloadSuccess(true);
-    setTimeout(() => {
-      setDownloadSuccess(false);
-    }, 3500);
+    if (filteredData.length === 0) {
+      alert("Tidak ada data kehadiran untuk diunduh.");
+      return;
+    }
+    const headers = ["No", "Kamar", "Nama Penghuni", "NIM", "Presensi Subuh", "Presensi Malam", "Total Hadir", "Total Izin", "Total Alpha", "Tingkat Kepatuhan"];
+    const rows = filteredData.map((s, idx) => [
+      idx + 1,
+      s.room,
+      s.name,
+      s.nim,
+      `${s.subuh} (${s.subuhTime})`,
+      `${s.maghrib} (${s.maghribTime})`,
+      s.totalPresent,
+      s.totalPermit,
+      s.totalAlpha,
+      `${s.complianceRate}%`
+    ]);
+
+    const success = downloadExcelHtml(
+      `Rekap_Presensi_Lantai_3_${new Date().toISOString().slice(0, 10)}.xls`,
+      "REKAPITULASI KEHADIRAN PENGHUNI LANTAI 3 ASRAMA",
+      headers,
+      rows
+    );
+
+    if (success) {
+      setDownloadSuccess(true);
+      setTimeout(() => {
+        setDownloadSuccess(false);
+      }, 3500);
+    }
+  };
+
+  const handlePrintPDF = () => {
+    if (filteredData.length === 0) {
+      alert("Tidak ada data kehadiran untuk dicetak.");
+      return;
+    }
+    const headers = ["Kamar", "Nama Penghuni", "NIM", "Subuh", "Malam", "Hadir", "Izin", "Alpha", "Kepatuhan"];
+    const rows = filteredData.map((s) => [
+      s.room,
+      s.name,
+      s.nim,
+      s.subuh,
+      s.maghrib,
+      s.totalPresent,
+      s.totalPermit,
+      s.totalAlpha,
+      `${s.complianceRate}%`
+    ]);
+
+    printOfficialDocument({
+      title: "REKAPITULASI KEHADIRAN PENGHUNI LANTAI 3",
+      subtitle: "Monitoring Presensi Harian Sholat Subuh & Malam Santri Asrama",
+      metaInfo: [
+        { label: "Gedung / Wilayah", value: "Asrama Mahasiswa Universitas Andalas - Lantai 3" },
+        { label: "Total Penghuni", value: `${filteredData.length} Mahasiswa Terdaftar` },
+        { label: "Periode Rekapitulasi", value: "Semester Ganjil Berjalan" }
+      ],
+      headers,
+      rows,
+      signerName: "Fasilitator Lantai 3",
+      signerRole: "Fasilitator Pendamping Asrama"
+    });
   };
 
   const filteredData = studentsAttendance.filter((s) => {
@@ -124,7 +186,7 @@ export default function RekapKehadiranPage() {
               color: "#ffffff",
               border: "none",
               borderRadius: "10px",
-              padding: "10px 20px",
+              padding: "10px 18px",
               fontSize: "13px",
               fontWeight: "600",
               cursor: "pointer",
@@ -135,7 +197,30 @@ export default function RekapKehadiranPage() {
             onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#2563eb")}
           >
             <Download size={16} />
-            <span>Unduh Rekap (.xlsx)</span>
+            <span>Unduh Excel (.xls)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handlePrintPDF}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "8px",
+              backgroundColor: "#ffffff",
+              color: "#0f172a",
+              border: "1px solid #cbd5e1",
+              borderRadius: "10px",
+              padding: "10px 16px",
+              fontSize: "13px",
+              fontWeight: "600",
+              cursor: "pointer",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+              transition: "all 0.15s ease"
+            }}
+          >
+            <Printer size={16} color="#2563eb" />
+            <span>Cetak PDF</span>
           </button>
         </div>
       </div>

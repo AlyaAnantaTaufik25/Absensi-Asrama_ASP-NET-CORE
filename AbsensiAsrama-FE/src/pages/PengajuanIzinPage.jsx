@@ -13,9 +13,11 @@ import {
   CheckCircle2,
   Clock,
   Briefcase,
-  HeartPulse
+  HeartPulse,
+  Printer
 } from "lucide-react";
 import { submitIzin, getPerizinan, uploadIzinFile } from "../services/api";
+import { downloadCSV, printOfficialDocument } from "../utils/exportUtils";
 
 export default function PengajuanIzinPage({ user }) {
   const [activeTab, setActiveTab] = useState("riwayat"); // "riwayat" or "form"
@@ -163,6 +165,53 @@ export default function PengajuanIzinPage({ user }) {
     return matchSearch && matchCategory && matchStatus;
   });
 
+  const handleExportIzinCSV = () => {
+    if (filteredList.length === 0) {
+      alert("Tidak ada data riwayat perizinan untuk diunduh.");
+      return;
+    }
+    const headers = ["No", "Tanggal Pengajuan / Rentang", "Jenis Izin", "Alasan Permohonan", "Dokumen Bukti", "Status"];
+    const rows = filteredList.map((item, idx) => [
+      idx + 1,
+      item.rentang,
+      item.jenis,
+      item.alasan,
+      item.dokumen,
+      item.status
+    ]);
+    const cleanName = (user?.displayName || user?.name || "Mahasiswa").replace(/\s+/g, "_");
+    downloadCSV(`Rekap_Perizinan_${cleanName}_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+  };
+
+  const handlePrintIzinPDF = () => {
+    if (filteredList.length === 0) {
+      alert("Tidak ada data perizinan untuk dicetak.");
+      return;
+    }
+    const headers = ["Tanggal / Rentang", "Jenis", "Alasan Permohonan", "Dokumen", "Status Persetujuan"];
+    const rows = filteredList.map((item) => [
+      item.rentang,
+      item.jenis,
+      item.alasan,
+      item.dokumen,
+      item.status
+    ]);
+    printOfficialDocument({
+      title: "REKAPITULASI RIWAYAT PERIZINAN MAHASISWA ASRAMA",
+      subtitle: "Daftar Riwayat Pengajuan Izin Keluar, Sakit, & Dispensasi Kegiatan",
+      metaInfo: [
+        { label: "Nama Mahasiswa", value: user?.displayName || user?.name || "Alya Ananta" },
+        { label: "NIM / ID", value: user?.nim || "2311523005" },
+        { label: "Gedung Asrama / Kamar", value: `${user?.building || "Asrama Putri"} · ${user?.room || "Kamar 302"}` },
+        { label: "Total Pengajuan", value: `${filteredList.length} Permohonan Izin Tercatat` }
+      ],
+      headers,
+      rows,
+      signerName: "Fasilitator / Pembina Asrama",
+      signerRole: "Pengelola Asrama Mahasiswa"
+    });
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
       {/* 1. Header Row */}
@@ -178,12 +227,13 @@ export default function PengajuanIzinPage({ user }) {
 
         <div style={{ display: "flex", gap: "10px" }}>
           <button
-            onClick={() => alert("Mengunduh rekap riwayat perizinan (PDF)...")}
+            type="button"
+            onClick={handleExportIzinCSV}
             style={{
               backgroundColor: "#ffffff",
-              border: "1px solid #e2e8f0",
-              color: "#334155",
-              fontWeight: "600",
+              border: "1px solid #cbd5e1",
+              color: "#0f172a",
+              fontWeight: "700",
               fontSize: "13px",
               padding: "10px 16px",
               borderRadius: "10px",
@@ -194,8 +244,30 @@ export default function PengajuanIzinPage({ user }) {
               boxShadow: "0 1px 2px rgba(0,0,0,0.03)"
             }}
           >
-            <Download size={15} />
-            Unduh Rekap Izin
+            <Download size={15} color="#2563eb" />
+            Unduh Rekap (.csv)
+          </button>
+
+          <button
+            type="button"
+            onClick={handlePrintIzinPDF}
+            style={{
+              backgroundColor: "#ffffff",
+              border: "1px solid #cbd5e1",
+              color: "#0f172a",
+              fontWeight: "700",
+              fontSize: "13px",
+              padding: "10px 16px",
+              borderRadius: "10px",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              cursor: "pointer",
+              boxShadow: "0 1px 2px rgba(0,0,0,0.03)"
+            }}
+          >
+            <Printer size={15} color="#2563eb" />
+            Cetak PDF
           </button>
 
           <button

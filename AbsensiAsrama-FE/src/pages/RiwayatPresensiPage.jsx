@@ -7,9 +7,11 @@ import {
   CheckCircle2,
   Eye,
   FileText,
-  X
+  X,
+  Printer
 } from "lucide-react";
 import { getPresensi } from "../services/api";
+import { downloadCSV, printOfficialDocument } from "../utils/exportUtils";
 
 export default function RiwayatPresensiPage({ user }) {
   const [searchQuery, setSearchQuery] = useState("");
@@ -78,6 +80,58 @@ export default function RiwayatPresensiPage({ user }) {
     return matchSearch && matchSession && matchStatus;
   });
 
+  const [showExportMenu, setShowExportMenu] = useState(false);
+
+  const handleExportCSV = () => {
+    if (filteredRecords.length === 0) {
+      alert("Tidak ada data presensi untuk diunduh.");
+      return;
+    }
+    const headers = ["No", "Tanggal", "Waktu", "Sesi", "Status", "Lokasi", "Keterangan"];
+    const rows = filteredRecords.map((r, i) => [
+      i + 1,
+      r.tanggal,
+      r.waktu,
+      r.sesi,
+      r.status,
+      r.lokasi,
+      r.keterangan
+    ]);
+    const cleanName = (user?.displayName || user?.name || "Mahasiswa").replace(/\s+/g, "_");
+    downloadCSV(`Rekap_Presensi_${cleanName}_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+    setShowExportMenu(false);
+  };
+
+  const handlePrintPDF = () => {
+    if (filteredRecords.length === 0) {
+      alert("Tidak ada data presensi untuk dicetak.");
+      return;
+    }
+    const headers = ["Tanggal", "Waktu", "Sesi", "Status Kehadiran", "Keterangan"];
+    const rows = filteredRecords.map((r) => [
+      r.tanggal,
+      r.waktu,
+      r.sesi,
+      r.status,
+      r.keterangan
+    ]);
+    printOfficialDocument({
+      title: "REKAPITULASI PRESENSI MAHASISWA ASRAMA",
+      subtitle: "Laporan Kehadiran Harian Santri / Penghuni Asrama Universitas Andalas",
+      metaInfo: [
+        { label: "Nama Mahasiswa", value: user?.displayName || user?.name || "Alya Ananta" },
+        { label: "NIM / ID", value: user?.nim || "2311523005" },
+        { label: "Gedung Asrama / Kamar", value: `${user?.building || "Asrama Putri"} · ${user?.room || "Kamar 302"}` },
+        { label: "Ringkasan Kehadiran", value: `${countHadir} Sesi Hadir · ${countIzin} Izin · ${countAlpha} Alpha` }
+      ],
+      headers,
+      rows,
+      signerName: "Fasilitator / Pembina Asrama",
+      signerRole: "Pengelola Asrama Mahasiswa"
+    });
+    setShowExportMenu(false);
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
       {/* 1. Header Row */}
@@ -91,29 +145,10 @@ export default function RiwayatPresensiPage({ user }) {
           </p>
         </div>
 
-        <div style={{ display: "flex", gap: "10px" }}>
+        <div style={{ display: "flex", gap: "10px", position: "relative" }}>
           <button
-            onClick={() => alert("Pilih periode filter...")}
-            style={{
-              backgroundColor: "#f0f7ff",
-              border: "1px solid #bfdbfe",
-              color: "#2349d4",
-              fontWeight: "700",
-              fontSize: "13px",
-              padding: "10px 16px",
-              borderRadius: "10px",
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              cursor: "pointer"
-            }}
-          >
-            <Calendar size={15} />
-            Filter Periode
-          </button>
-
-          <button
-            onClick={() => alert("Mengunduh rekap presensi...")}
+            type="button"
+            onClick={handleExportCSV}
             style={{
               backgroundColor: "#2349d4",
               border: "none",
@@ -124,14 +159,35 @@ export default function RiwayatPresensiPage({ user }) {
               borderRadius: "10px",
               display: "flex",
               alignItems: "center",
-              gap: "6px",
+              gap: "7px",
               cursor: "pointer",
               boxShadow: "0 4px 14px -2px rgba(35, 73, 212, 0.4)"
             }}
           >
             <Download size={15} />
-            <span>Unduh Rekap</span>
-            <ChevronDown size={14} />
+            <span>Unduh Rekap (.csv/Excel)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handlePrintPDF}
+            style={{
+              backgroundColor: "#ffffff",
+              border: "1px solid #cbd5e1",
+              color: "#0f172a",
+              fontWeight: "700",
+              fontSize: "13px",
+              padding: "10px 16px",
+              borderRadius: "10px",
+              display: "flex",
+              alignItems: "center",
+              gap: "7px",
+              cursor: "pointer",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+            }}
+          >
+            <Printer size={15} color="#2563eb" />
+            <span>Cetak Dokumen PDF</span>
           </button>
         </div>
       </div>

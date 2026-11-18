@@ -14,9 +14,12 @@ import {
   Calendar,
   User,
   Building,
-  Phone
+  Phone,
+  Download,
+  Printer
 } from "lucide-react";
 import { getPerizinan, getUsers } from "../../services/api";
+import { downloadCSV, printOfficialDocument } from "../../utils/exportUtils";
 
 export default function IzinDaruratPage({ onCountChange }) {
   const [requests, setRequests] = useState([]);
@@ -234,6 +237,56 @@ export default function IzinDaruratPage({ onCountChange }) {
     setCategoryFilter("semua");
   };
 
+  const handleExportCSV = () => {
+    if (filteredRequests.length === 0) {
+      alert("Tidak ada data izin darurat untuk diunduh.");
+      return;
+    }
+    const headers = ["No", "Kode Izin", "Nama Santri", "NIM", "Kamar", "Kategori", "Keperluan", "Rentang Waktu", "Status"];
+    const rows = filteredRequests.map((r, i) => [
+      i + 1,
+      r.code,
+      r.name,
+      r.nim,
+      r.room,
+      r.kategori,
+      r.purpose,
+      r.timeRange,
+      r.status
+    ]);
+    downloadCSV(`Rekap_Izin_Darurat_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+  };
+
+  const handlePrintPDF = () => {
+    if (filteredRequests.length === 0) {
+      alert("Tidak ada data izin darurat untuk dicetak.");
+      return;
+    }
+    const headers = ["Kode", "Nama Santri", "NIM", "Kamar", "Kategori", "Keperluan", "Status"];
+    const rows = filteredRequests.map((r) => [
+      r.code,
+      r.name,
+      r.nim,
+      r.room,
+      r.kategori,
+      r.purpose,
+      r.status.toUpperCase()
+    ]);
+    printOfficialDocument({
+      title: "REKAPITULASI IZIN DARURAT SANTRI ASRAMA",
+      subtitle: "Laporan Permohonan Izin Darurat, Sakit, & Malam Terverifikasi",
+      metaInfo: [
+        { label: "Unit Pengelola", value: "Fasilitator Asrama Mahasiswa Universitas Andalas" },
+        { label: "Total Permohonan", value: `${filteredRequests.length} Pengajuan Tercatat (${countDisetujui} Disetujui, ${countMenunggu} Menunggu, ${countDitolak} Ditolak)` },
+        { label: "Tanggal Dokumen", value: new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }) }
+      ],
+      headers,
+      rows,
+      signerName: "Fasilitator Jaga",
+      signerRole: "Fasilitator Pendamping Asrama"
+    });
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
       {/* 1. Header Row */}
@@ -261,6 +314,53 @@ export default function IzinDaruratPage({ onCountChange }) {
           <p style={{ margin: 0, fontSize: "13.5px", color: "#64748b" }}>
             Daftar pengajuan izin darurat dan izin malam santri yang memerlukan verifikasi cepat fasilitator.
           </p>
+        </div>
+
+        {/* Action Buttons: Export CSV & Print PDF */}
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <button
+            type="button"
+            onClick={handleExportCSV}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "7px",
+              backgroundColor: "#2563eb",
+              color: "#ffffff",
+              border: "none",
+              borderRadius: "10px",
+              padding: "10px 16px",
+              fontSize: "13px",
+              fontWeight: "600",
+              cursor: "pointer",
+              boxShadow: "0 2px 8px rgba(37, 99, 235, 0.25)"
+            }}
+          >
+            <Download size={15} />
+            <span>Unduh Rekap (.csv)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handlePrintPDF}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "7px",
+              backgroundColor: "#ffffff",
+              color: "#0f172a",
+              border: "1px solid #cbd5e1",
+              borderRadius: "10px",
+              padding: "10px 16px",
+              fontSize: "13px",
+              fontWeight: "600",
+              cursor: "pointer",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+            }}
+          >
+            <Printer size={15} color="#2563eb" />
+            <span>Cetak PDF</span>
+          </button>
         </div>
       </div>
 

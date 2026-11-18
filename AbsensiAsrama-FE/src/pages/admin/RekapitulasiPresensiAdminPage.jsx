@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { ArrowUpDown, RotateCcw, Filter, CheckCircle2, Download, Printer } from "lucide-react";
 import { getPresensi, getUsers } from "../../services/api";
+import { downloadCSV, printOfficialDocument } from "../../utils/exportUtils";
 
 export default function RekapitulasiPresensiAdminPage() {
   const [period, setPeriod] = useState("Bulan ini");
@@ -103,25 +104,50 @@ export default function RekapitulasiPresensiAdminPage() {
       alert("Tidak ada data presensi untuk diekspor.");
       return;
     }
-    const headers = ["NIM", "Nama", "Gedung", "Kamar", "Hadir", "Izin", "Alpha", "Persentase Kehadiran"];
-    const rows = filteredList.map((r) => [
-      `"${r.nim}"`,
-      `"${r.name}"`,
-      `"${r.building}"`,
-      `"${r.room}"`,
+    const headers = ["No", "NIM", "Nama Lengkap", "Gedung Asrama", "Nomor Kamar", "Hadir", "Izin", "Alpha", "Persentase Kehadiran"];
+    const rows = filteredList.map((r, i) => [
+      i + 1,
+      r.nim,
+      r.name,
+      r.building,
+      r.room,
       r.hadir,
       r.izin,
       r.alpha,
-      `"${r.percentage}%"`
+      `${r.percentage}%`
     ]);
-    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map((e) => e.join(","))].join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `Rekap_Presensi_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    downloadCSV(`Rekap_Presensi_Admin_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+  };
+
+  const handlePrintPDF = () => {
+    if (filteredList.length === 0) {
+      alert("Tidak ada data presensi untuk dicetak.");
+      return;
+    }
+    const headers = ["NIM", "Nama Mahasiswa", "Gedung", "Kamar", "Hadir", "Izin", "Alpha", "Kepatuhan"];
+    const rows = filteredList.map((r) => [
+      r.nim,
+      r.name,
+      r.building,
+      r.room,
+      r.hadir,
+      r.izin,
+      r.alpha,
+      `${r.percentage}%`
+    ]);
+    printOfficialDocument({
+      title: "REKAPITULASI PRESENSI MAHASISWA ASRAMA UNIVERSITAS ANDALAS",
+      subtitle: "Laporan Tingkat Kehadiran Harian Santri Seluruh Gedung Asrama",
+      metaInfo: [
+        { label: "Unit Kerja", value: "Bagian Administrasi & Kemahasiswaan UPT Asrama Unand" },
+        { label: "Total Mahasiswa", value: `${filteredList.length} Mahasiswa Tercatat` },
+        { label: "Rata-rata Kehadiran", value: `${avgPercentage}% (${totalHadir} Hadir, ${totalIzin} Izin, ${totalAlpha} Alpha)` }
+      ],
+      headers,
+      rows,
+      signerName: "Kepala UPT Asrama Unand",
+      signerRole: "Kepala Unit Pelaksana Teknis Asrama"
+    });
   };
 
   return (
@@ -160,7 +186,8 @@ export default function RekapitulasiPresensiAdminPage() {
         {/* Export Buttons */}
         <div style={{ display: "flex", gap: "10px" }}>
           <button
-            onClick={() => window.print()}
+            type="button"
+            onClick={handlePrintPDF}
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -172,13 +199,15 @@ export default function RekapitulasiPresensiAdminPage() {
               color: "#334155",
               fontSize: "13px",
               fontWeight: "700",
-              cursor: "pointer"
+              cursor: "pointer",
+              boxShadow: "0 1px 2px rgba(0,0,0,0.03)"
             }}
           >
-            <Printer size={15} />
-            Cetak / PDF
+            <Printer size={15} color="#2563eb" />
+            Cetak PDF Resmi
           </button>
           <button
+            type="button"
             onClick={handleExportCSV}
             style={{
               display: "inline-flex",
