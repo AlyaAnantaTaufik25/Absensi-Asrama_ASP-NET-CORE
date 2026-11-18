@@ -6,18 +6,20 @@ import {
   Users,
   UserCheck,
   KeyRound,
+  ShieldCheck,
   BarChart3,
+  TrendingUp,
   LogOut
 } from "lucide-react";
 
 export default function AdminSidebar({ activeTab, setActiveTab, onLogout }) {
   const menuItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { id: "data-gedung", label: "Data Gedung", icon: Database },
+    { id: "master-data", label: "Data Gedung", icon: Database },
     { id: "data-penghuni", label: "Data Penghuni", icon: Users },
     { id: "data-fasil", label: "Data Fasil", icon: UserCheck },
     { id: "akun-pengguna", label: "Akun Pengguna", icon: KeyRound },
-    { id: "rekapitulasi", label: "Rekapitulasi Presensi", icon: BarChart3 },
+    { id: "rekapitulasi", label: "Rekapitulasi Presensi", icon: BarChart3 }
   ];
 
   return (
@@ -42,7 +44,7 @@ export default function AdminSidebar({ activeTab, setActiveTab, onLogout }) {
     >
       <div>
         {/* Brand Logo */}
-        <div style={{ padding: "0 10px 24px 10px" }}>
+        <div style={{ padding: "4px 14px 24px 14px" }}>
           <Logo variant="yellow" />
         </div>
 

@@ -205,6 +205,26 @@ export async function recordPresensi(presensiData) {
 }
 
 /**
+ * Unggah berkas bukti perizinan ke backend
+ */
+export async function uploadIzinFile(file) {
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const res = await fetch(`${API_BASE_URL}/api/perizinan/upload`, {
+      method: "POST",
+      body: formData
+    });
+    if (!res.ok) throw new Error("Gagal mengunggah berkas");
+    return await res.json();
+  } catch (err) {
+    console.warn("Gagal unggah berkas perizinan:", err);
+    return null;
+  }
+}
+
+/**
  * Kirim perizinan ke backend
  */
 export async function submitIzin(izinData) {
@@ -249,5 +269,198 @@ export async function getPerizinan() {
     return [];
   }
 }
+
+/**
+ * Tambah Pengguna Baru (Mahasiswa / Fasil / Admin)
+ */
+export async function createUser(userData) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/users`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(userData)
+    });
+    const data = await res.json();
+    return { ok: res.ok, status: res.status, data };
+  } catch (err) {
+    console.warn("Gagal membuat user:", err);
+    return { ok: false, data: { message: err.message } };
+  }
+}
+
+/**
+ * Perbarui Pengguna
+ */
+export async function updateUser(idUser, userData) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/users/${idUser}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(userData)
+    });
+    const data = await res.json();
+    return { ok: res.ok, status: res.status, data };
+  } catch (err) {
+    console.warn("Gagal update user:", err);
+    return { ok: false, data: { message: err.message } };
+  }
+}
+
+/**
+ * Hapus Pengguna
+ */
+export async function deleteUser(idUser) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/users/${idUser}`, {
+      method: "DELETE"
+    });
+    const data = await res.json();
+    return { ok: res.ok, status: res.status, data };
+  } catch (err) {
+    console.warn("Gagal menghapus user:", err);
+    return { ok: false, data: { message: err.message } };
+  }
+}
+
+/**
+ * Ambil data seluruh Gedung
+ */
+export async function getGedung() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/gedung`);
+    if (!res.ok) throw new Error("Gagal mengambil data gedung");
+    return await res.json();
+  } catch (err) {
+    console.warn("Backend gedung error:", err);
+    return [];
+  }
+}
+
+/**
+ * Tambah Gedung Baru
+ */
+export async function createGedung(gedungData) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/gedung`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(gedungData)
+    });
+    return await res.json();
+  } catch (err) {
+    console.warn("Gagal simpan gedung:", err);
+    return null;
+  }
+}
+
+/**
+ * Update Gedung
+ */
+export async function updateGedung(idGedung, gedungData) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/gedung/${idGedung}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(gedungData)
+    });
+    return await res.json();
+  } catch (err) {
+    console.warn("Gagal update gedung:", err);
+    return null;
+  }
+}
+
+/**
+ * Hapus Gedung
+ */
+export async function deleteGedung(idGedung) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/gedung/${idGedung}`, {
+      method: "DELETE"
+    });
+    return await res.json();
+  } catch (err) {
+    console.warn("Gagal menghapus gedung:", err);
+    return null;
+  }
+}
+
+/**
+ * Ambil data seluruh Kamar
+ */
+export async function getKamar() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/kamar`);
+    if (!res.ok) throw new Error("Gagal mengambil data kamar");
+    return await res.json();
+  } catch (err) {
+    console.warn("Backend kamar error:", err);
+    return [];
+  }
+}
+
+/**
+ * Tambah Kamar Baru
+ */
+export async function createKamar(kamarData) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/kamar`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(kamarData)
+    });
+    return await res.json();
+  } catch (err) {
+    console.warn("Gagal simpan kamar:", err);
+    return null;
+  }
+}
+
+/**
+ * Update Kamar
+ */
+export async function updateKamar(noKamar, kamarData) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/kamar/${noKamar}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(kamarData)
+    });
+    return await res.json();
+  } catch (err) {
+    console.warn("Gagal update kamar:", err);
+    return null;
+  }
+}
+
+/**
+ * Hapus Kamar
+ */
+export async function deleteKamar(noKamar) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/kamar/${encodeURIComponent(noKamar)}`, {
+      method: "DELETE"
+    });
+    return await res.json();
+  } catch (err) {
+    console.warn("Gagal menghapus kamar:", err);
+    return null;
+  }
+}
+
+/**
+ * Statistik Dashboard
+ */
+export async function getStats() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/stats`);
+    if (!res.ok) throw new Error("Gagal mengambil statistik");
+    return await res.json();
+  } catch (err) {
+    console.warn("Gagal mengambil stats:", err);
+    return null;
+  }
+}
+
 
 

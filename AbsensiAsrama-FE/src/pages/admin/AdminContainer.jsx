@@ -6,7 +6,9 @@ import MasterDataPage from "./MasterDataPage";
 import DataPenghuniPage from "./DataPenghuniPage";
 import DataFasilPage from "./DataFasilPage";
 import AkunPenggunaPage from "./AkunPenggunaPage";
+import HakAksesPage from "./HakAksesPage";
 import RekapitulasiPresensiAdminPage from "./RekapitulasiPresensiAdminPage";
+import { ShieldCheck, BarChart3, TrendingUp } from "lucide-react";
 
 export default function AdminContainer({ user, onLogout }) {
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -31,7 +33,7 @@ export default function AdminContainer({ user, onLogout }) {
             <AdminDashboardPage setActiveTab={setActiveTab} />
           )}
 
-          {activeTab === "data-gedung" && (
+          {(activeTab === "master-data" || activeTab === "data-gedung") && (
             <MasterDataPage />
           )}
 
@@ -43,7 +45,7 @@ export default function AdminContainer({ user, onLogout }) {
             <DataFasilPage />
           )}
 
-          {activeTab === "akun-pengguna" && (
+          {(activeTab === "akun-pengguna" || activeTab === "hak-akses") && (
             <AkunPenggunaPage />
           )}
 

@@ -8,138 +8,103 @@ import {
   RotateCw,
   ChevronRight
 } from "lucide-react";
+import { getStats, getPresensi } from "../../services/api";
 
 export default function AdminDashboardPage({ setActiveTab }) {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [stats, setStats] = useState({
-    penghuni: "-",
-    fasil: "-",
-    gedung: "-",
-    kamar: "-",
-    kehadiran: "-"
+    totalPenghuni: 0,
+    totalFasil: 0,
+    totalGedung: 0,
+    totalKamar: 0,
+    attendanceRate: 0
   });
 
-  const BASE_URL = "http://localhost:5250";
+  const [trendData, setTrendData] = useState([
+    { day: "Min", val: 0 },
+    { day: "Sen", val: 0 },
+    { day: "Sel", val: 0 },
+    { day: "Rab", val: 0 },
+    { day: "Kam", val: 0 },
+    { day: "Jum", val: 0 },
+    { day: "Sab", val: 0 }
+  ]);
 
-  const fetchStats = async () => {
+  const loadStats = async () => {
     try {
-      // Fetch users → hitung penghuni dan fasil
-      const usersRes = await fetch(`${BASE_URL}/api/users`);
-      if (usersRes.ok) {
-        const users = await usersRes.json();
-        const penghuniCount = users.filter(
-          (u) => u.role === "penghuni" || u.role === "mahasiswa"
-        ).length;
-        const fasilCount = users.filter((u) => u.role === "fasil").length;
-        setStats((prev) => ({
-          ...prev,
-          penghuni: penghuniCount,
-          fasil: fasilCount
-        }));
+      const [data, presensi] = await Promise.all([getStats(), getPresensi()]);
+      if (data) {
+        setStats(data);
       }
-    } catch (_) {}
-
-    try {
-      // Fetch gedung
-      const gedungRes = await fetch(`${BASE_URL}/api/gedung`);
-      if (gedungRes.ok) {
-        const gedung = await gedungRes.json();
-        setStats((prev) => ({ ...prev, gedung: gedung.length }));
-      }
-    } catch (_) {}
-
-    try {
-      // Fetch kamar
-      const kamarRes = await fetch(`${BASE_URL}/api/kamar`);
-      if (kamarRes.ok) {
-        const kamar = await kamarRes.json();
-        setStats((prev) => ({ ...prev, kamar: kamar.length }));
-      }
-    } catch (_) {}
-
-    try {
-      // Fetch presensi → hitung % hadir hari ini
-      const presensiRes = await fetch(`${BASE_URL}/api/presensi`);
-      if (presensiRes.ok) {
-        const presensi = await presensiRes.json();
-        const today = new Date().toISOString().split("T")[0];
-        const todayRecords = presensi.filter((p) => {
-          const tgl =
-            p.tanggal || p.Tanggal || p.date || p.Date || "";
-          return tgl.startsWith(today);
+      if (Array.isArray(presensi)) {
+        const days = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
+        const counts = [0, 0, 0, 0, 0, 0, 0];
+        const totals = [0, 0, 0, 0, 0, 0, 0];
+        presensi.forEach((p) => {
+          const d = new Date(p.waktu || p.tanggal).getDay();
+          totals[d]++;
+          if (p.status === "Hadir") counts[d]++;
         });
-        if (todayRecords.length > 0) {
-          const hadirCount = todayRecords.filter(
-            (p) =>
-              (p.status || p.Status || "").toLowerCase() === "hadir"
-          ).length;
-          const pct = Math.round((hadirCount / todayRecords.length) * 100);
-          setStats((prev) => ({ ...prev, kehadiran: `${pct}%` }));
-        } else {
-          setStats((prev) => ({ ...prev, kehadiran: "0%" }));
-        }
+        setTrendData(
+          days.map((day, idx) => ({
+            day,
+            val: totals[idx] > 0 ? Math.round((counts[idx] / totals[idx]) * 100) : 0
+          }))
+        );
       }
-    } catch (_) {}
+    } catch (err) {
+      console.warn("Gagal memuat statistik admin:", err);
+    }
   };
 
   useEffect(() => {
-    fetchStats();
+    loadStats();
   }, []);
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setIsRefreshing(true);
-    fetchStats().finally(() => {
-      setTimeout(() => setIsRefreshing(false), 400);
-    });
+    await loadStats();
+    setTimeout(() => {
+      setIsRefreshing(false);
+    }, 400);
   };
 
   const statCards = [
     {
       id: "penghuni",
       label: "Penghuni Aktif",
-      value: stats.penghuni,
+      value: String(stats.totalPenghuni),
       icon: Users,
       tab: "data-penghuni"
     },
     {
       id: "fasil",
       label: "Fasil Aktif",
-      value: stats.fasil,
+      value: String(stats.totalFasil),
       icon: UserCheck,
       tab: "data-fasil"
     },
     {
       id: "gedung",
       label: "Gedung",
-      value: stats.gedung,
+      value: String(stats.totalGedung),
       icon: Building2,
       tab: "master-data"
     },
     {
       id: "kamar",
       label: "Kamar",
-      value: stats.kamar,
+      value: String(stats.totalKamar),
       icon: DoorClosed,
       tab: "master-data"
     },
     {
       id: "kehadiran",
       label: "Kehadiran Hari Ini",
-      value: stats.kehadiran,
+      value: `${stats.attendanceRate}%`,
       icon: Percent,
       tab: "rekapitulasi"
     }
-  ];
-
-  // 7-day attendance trend data
-  const trendData = [
-    { day: "Rab", val: 82 },
-    { day: "Kam", val: 88 },
-    { day: "Jum", val: 84 },
-    { day: "Sab", val: 92 },
-    { day: "Min", val: 95 },
-    { day: "Sen", val: 90 },
-    { day: "Sel", val: 68 }
   ];
 
   return (

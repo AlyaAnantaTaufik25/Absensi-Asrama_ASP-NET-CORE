@@ -5,59 +5,10 @@ export default function KeluarMasukPage() {
   const [subTab, setSubTab] = useState("keluar-masuk"); // "keluar-masuk" | "buku-tamu"
 
   // Keluar-masuk malam records
-  const [nightLogs, setNightLogs] = useState([
-    {
-      id: "KM-01",
-      name: "Farid Ramli",
-      room: "B-311",
-      purpose: "Rapat panitia (izin darurat)",
-      timeOut: "20:50",
-      timeIn: "—",
-      status: "Di luar"
-    },
-    {
-      id: "KM-02",
-      name: "Alvin Syahputra",
-      room: "B-305",
-      purpose: "Kegiatan UKM",
-      timeOut: "19:10",
-      timeIn: "20:05",
-      status: "Sudah kembali"
-    },
-    {
-      id: "KM-03",
-      name: "Hasan Basri",
-      room: "B-310",
-      purpose: "Perpustakaan kampus",
-      timeOut: "20:15",
-      timeIn: "21:02",
-      status: "Sudah kembali"
-    }
-  ]);
+  const [nightLogs, setNightLogs] = useState([]);
 
   // Buku tamu records
-  const [guestLogs, setGuestLogs] = useState([
-    {
-      id: "TM-01",
-      guestName: "Budi Santoso",
-      relation: "Orang tua",
-      residentName: "Fikri Ramadhan (B-301)",
-      timeIn: "14:20",
-      timeOut: "16:45",
-      status: "Selesai",
-      notes: "Mengantar perlengkapan kuliah"
-    },
-    {
-      id: "TM-02",
-      guestName: "Dimas Nugraha",
-      relation: "Teman Kuliah",
-      residentName: "Yoga Prasetyo (B-302)",
-      timeIn: "19:30",
-      timeOut: "20:45",
-      status: "Selesai",
-      notes: "Belajar kelompok tugas akhir"
-    }
-  ]);
+  const [guestLogs, setGuestLogs] = useState([]);
 
   const [guestModalOpen, setGuestModalOpen] = useState(false);
   const [newGuest, setNewGuest] = useState({
@@ -73,10 +24,10 @@ export default function KeluarMasukPage() {
       prev.map((item) =>
         item.id === id
           ? {
-              ...item,
-              timeIn: currentTime,
-              status: "Sudah kembali"
-            }
+            ...item,
+            timeIn: currentTime,
+            status: "Sudah kembali"
+          }
           : item
       )
     );
@@ -210,7 +161,14 @@ export default function KeluarMasukPage() {
                 </tr>
               </thead>
               <tbody>
-                {nightLogs.map((row, index) => {
+                {nightLogs.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} style={{ textAlign: "center", padding: "36px", color: "#94a3b8", fontSize: "13px" }}>
+                      Belum ada catatan keluar-masuk malam tercatat.
+                    </td>
+                  </tr>
+                ) : (
+                  nightLogs.map((row, index) => {
                   const isOut = row.status === "Di luar";
                   return (
                     <tr
@@ -281,7 +239,8 @@ export default function KeluarMasukPage() {
                       </td>
                     </tr>
                   );
-                })}
+                })
+              )}
               </tbody>
             </table>
           </div>
@@ -299,44 +258,52 @@ export default function KeluarMasukPage() {
                 </tr>
               </thead>
               <tbody>
-                {guestLogs.map((row, index) => (
-                  <tr
-                    key={row.id}
-                    style={{
-                      borderBottom: index === guestLogs.length - 1 ? "none" : "1px solid #f8fafc"
-                    }}
-                  >
-                    <td style={{ padding: "14px 20px", fontWeight: "700", color: "#0f172a" }}>
-                      {row.guestName}
-                    </td>
-                    <td style={{ padding: "14px 20px", color: "#64748b" }}>
-                      {row.relation}
-                    </td>
-                    <td style={{ padding: "14px 20px", fontWeight: "600", color: "#1e293b" }}>
-                      {row.residentName}
-                    </td>
-                    <td style={{ padding: "14px 20px", color: "#64748b" }}>
-                      {row.timeIn}
-                    </td>
-                    <td style={{ padding: "14px 20px", color: "#64748b" }}>
-                      {row.timeOut}
-                    </td>
-                    <td style={{ padding: "14px 20px" }}>
-                      <span
-                        style={{
-                          backgroundColor: row.status === "Selesai" ? "#dcfce7" : "#dbeafe",
-                          color: row.status === "Selesai" ? "#15803d" : "#1d4ed8",
-                          fontSize: "11px",
-                          fontWeight: "600",
-                          padding: "3px 10px",
-                          borderRadius: "6px"
-                        }}
-                      >
-                        {row.status}
-                      </span>
+                {guestLogs.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} style={{ textAlign: "center", padding: "36px", color: "#94a3b8", fontSize: "13px" }}>
+                      Belum ada tamu yang tercatat hari ini.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  guestLogs.map((row, index) => (
+                    <tr
+                      key={row.id}
+                      style={{
+                        borderBottom: index === guestLogs.length - 1 ? "none" : "1px solid #f8fafc"
+                      }}
+                    >
+                      <td style={{ padding: "14px 20px", fontWeight: "700", color: "#0f172a" }}>
+                        {row.guestName}
+                      </td>
+                      <td style={{ padding: "14px 20px", color: "#64748b" }}>
+                        {row.relation}
+                      </td>
+                      <td style={{ padding: "14px 20px", fontWeight: "600", color: "#1e293b" }}>
+                        {row.residentName}
+                      </td>
+                      <td style={{ padding: "14px 20px", color: "#64748b" }}>
+                        {row.timeIn}
+                      </td>
+                      <td style={{ padding: "14px 20px", color: "#64748b" }}>
+                        {row.timeOut}
+                      </td>
+                      <td style={{ padding: "14px 20px" }}>
+                        <span
+                          style={{
+                            backgroundColor: row.status === "Selesai" ? "#dcfce7" : "#dbeafe",
+                            color: row.status === "Selesai" ? "#15803d" : "#1d4ed8",
+                            fontSize: "11px",
+                            fontWeight: "600",
+                            padding: "3px 10px",
+                            borderRadius: "6px"
+                          }}
+                        >
+                          {row.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>

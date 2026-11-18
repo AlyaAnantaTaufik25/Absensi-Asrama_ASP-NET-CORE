@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { ArrowUpDown, RotateCcw, Filter, CheckCircle2 } from "lucide-react";
+import { ArrowUpDown, RotateCcw, Filter, CheckCircle2, Download, Printer } from "lucide-react";
 import { getPresensi, getUsers } from "../../services/api";
 
 export default function RekapitulasiPresensiAdminPage() {
@@ -98,36 +98,107 @@ export default function RekapitulasiPresensiAdminPage() {
         )
       : 0;
 
+  const handleExportCSV = () => {
+    if (filteredList.length === 0) {
+      alert("Tidak ada data presensi untuk diekspor.");
+      return;
+    }
+    const headers = ["NIM", "Nama", "Gedung", "Kamar", "Hadir", "Izin", "Alpha", "Persentase Kehadiran"];
+    const rows = filteredList.map((r) => [
+      `"${r.nim}"`,
+      `"${r.name}"`,
+      `"${r.building}"`,
+      `"${r.room}"`,
+      r.hadir,
+      r.izin,
+      r.alpha,
+      `"${r.percentage}%"`
+    ]);
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map((e) => e.join(","))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `Rekap_Presensi_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-      {/* 1. Header */}
-      <div>
-        <div
-          style={{
-            fontSize: "11px",
-            fontWeight: "800",
-            color: "#2563eb",
-            letterSpacing: "1.2px",
-            textTransform: "uppercase",
-            marginBottom: "4px"
-          }}
-        >
-          LAPORAN PRESENSI
+      {/* 1. Header with Export Actions */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: "16px" }}>
+        <div>
+          <div
+            style={{
+              fontSize: "11px",
+              fontWeight: "800",
+              color: "#2563eb",
+              letterSpacing: "1.2px",
+              textTransform: "uppercase",
+              marginBottom: "4px"
+            }}
+          >
+            LAPORAN PRESENSI
+          </div>
+          <h1
+            style={{
+              fontSize: "24px",
+              fontWeight: "800",
+              color: "#0f172a",
+              margin: "0 0 6px 0",
+              letterSpacing: "-0.5px"
+            }}
+          >
+            Rekapitulasi Presensi
+          </h1>
+          <p style={{ margin: 0, fontSize: "13.5px", color: "#64748b" }}>
+            Ringkasan performa presensi setiap penghuni terdaftar.
+          </p>
         </div>
-        <h1
-          style={{
-            fontSize: "24px",
-            fontWeight: "800",
-            color: "#0f172a",
-            margin: "0 0 6px 0",
-            letterSpacing: "-0.5px"
-          }}
-        >
-          Rekapitulasi Presensi
-        </h1>
-        <p style={{ margin: 0, fontSize: "13.5px", color: "#64748b" }}>
-          Ringkasan performa presensi setiap penghuni.
-        </p>
+
+        {/* Export Buttons */}
+        <div style={{ display: "flex", gap: "10px" }}>
+          <button
+            onClick={() => window.print()}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "9px 16px",
+              borderRadius: "10px",
+              border: "1px solid #cbd5e1",
+              backgroundColor: "#ffffff",
+              color: "#334155",
+              fontSize: "13px",
+              fontWeight: "700",
+              cursor: "pointer"
+            }}
+          >
+            <Printer size={15} />
+            Cetak / PDF
+          </button>
+          <button
+            onClick={handleExportCSV}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "9px 18px",
+              borderRadius: "10px",
+              border: "none",
+              backgroundColor: "#2563eb",
+              color: "#ffffff",
+              fontSize: "13px",
+              fontWeight: "700",
+              cursor: "pointer",
+              boxShadow: "0 4px 12px rgba(37, 99, 235, 0.25)"
+            }}
+          >
+            <Download size={15} />
+            Ekspor Laporan (.CSV / Excel)
+          </button>
+        </div>
       </div>
 
       {appliedFilterNotice && (
@@ -260,9 +331,13 @@ export default function RekapitulasiPresensiAdminPage() {
               }}
             >
               <option value="SEMUA">SEMUA</option>
-              <option value="Gedung A">Gedung A</option>
-              <option value="Gedung B">Gedung B</option>
-              <option value="Gedung C">Gedung C</option>
+              <option value="Asrama Hijau">Asrama Hijau</option>
+              <option value="Asrama Orange">Asrama Orange</option>
+              <option value="Asrama Roesma M. Sjaaf">Asrama Roesma M. Sjaaf</option>
+              <option value="Asrama Menpera">Asrama Menpera</option>
+              <option value="Asrama PUPERA 1">Asrama PUPERA 1</option>
+              <option value="Asrama Rusunawa">Asrama Rusunawa</option>
+              <option value="Asrama RPX">Asrama RPX</option>
             </select>
           </div>
 

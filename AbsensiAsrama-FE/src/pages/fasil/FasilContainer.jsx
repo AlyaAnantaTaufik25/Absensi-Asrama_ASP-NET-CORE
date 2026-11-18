@@ -41,7 +41,7 @@ export default function FasilContainer({ user, onLogout }) {
           }}
         >
           {activeTab === "beranda" && (
-            <FasilDashboardPage setActiveTab={setActiveTab} />
+            <FasilDashboardPage setActiveTab={setActiveTab} user={user} />
           )}
 
           {activeTab === "presensi" && (
