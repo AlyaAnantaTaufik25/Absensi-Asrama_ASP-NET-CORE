@@ -232,6 +232,7 @@ export default function RekapKehadiranPage({ user }) {
     const success = downloadExcelHtml(filename, title, headers, rows);
     if (success) {
       setDownloadSuccess(true);
+      showToast("Laporan Excel satu gedung penuh berhasil diunduh.", "success");
       setTimeout(() => setDownloadSuccess(false), 3500);
     }
   };
@@ -277,6 +278,7 @@ export default function RekapKehadiranPage({ user }) {
 
     const cleanBuildingName = gedungInfo.namaGedung.replace(/\s+/g, "_");
     downloadCSV(`Rekap_${cleanBuildingName}_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+    showToast("Rekap CSV berhasil diunduh.", "success");
   };
 
   // Cetak Dokumen Resmi PDF

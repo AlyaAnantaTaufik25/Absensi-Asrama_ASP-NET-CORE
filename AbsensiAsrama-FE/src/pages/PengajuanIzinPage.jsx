@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { submitIzin, getPerizinan, uploadIzinFile } from "../services/api";
 import { showToast } from "../utils/toast";
+import { downloadCSV, printOfficialDocument } from "../utils/exportUtils";
 
 export default function PengajuanIzinPage({ user }) {
   const [showModal, setShowModal] = useState(false);
@@ -170,6 +171,27 @@ export default function PengajuanIzinPage({ user }) {
 
   const totalPengajuan = izinList.length;
 
+  const handleDownloadRekapIzin = () => {
+    if (filteredList.length === 0) {
+      showToast("Tidak ada data riwayat perizinan untuk diunduh.", "warning");
+      return;
+    }
+    const headers = ["No", "NIM", "Jenis Izin", "Rentang Tanggal", "Sesi / Durasi", "Alasan", "Berkas Lampiran", "Status Pengajuan"];
+    const rows = filteredList.map((item, idx) => [
+      idx + 1,
+      user?.nim || "2311523005",
+      item.jenis,
+      item.rentang,
+      item.subRentang,
+      item.alasan,
+      item.dokumen,
+      item.status
+    ]);
+    const cleanNim = (user?.nim || "2311523005").replace(/\s+/g, "_");
+    downloadCSV(`Rekap_Perizinan_${cleanNim}_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+    showToast("Rekap riwayat perizinan berhasil diunduh.", "success");
+  };
+
   return (
     <div
       style={{
@@ -225,7 +247,8 @@ export default function PengajuanIzinPage({ user }) {
 
         <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
           <button
-            onClick={() => showToast("Mengunduh rekap riwayat perizinan...", "info")}
+            type="button"
+            onClick={handleDownloadRekapIzin}
             style={{
               backgroundColor: "#ffffff",
               border: "1px solid #e5e5ea",

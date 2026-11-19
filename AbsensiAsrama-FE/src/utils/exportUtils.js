@@ -33,10 +33,13 @@ export function downloadCSV(filename, headers, rows) {
   const link = document.createElement("a");
   link.setAttribute("href", url);
   link.setAttribute("download", filename.endsWith(".csv") ? filename : `${filename}.csv`);
+  link.style.display = "none";
   document.body.appendChild(link);
   link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  setTimeout(() => {
+    if (document.body.contains(link)) document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, 1000);
   return true;
 }
 
@@ -94,10 +97,13 @@ export function downloadExcelHtml(filename, sheetTitle, headers, rows) {
   const link = document.createElement("a");
   link.setAttribute("href", url);
   link.setAttribute("download", filename.endsWith(".xls") ? filename : `${filename}.xls`);
+  link.style.display = "none";
   document.body.appendChild(link);
   link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  setTimeout(() => {
+    if (document.body.contains(link)) document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, 1000);
   return true;
 }
 

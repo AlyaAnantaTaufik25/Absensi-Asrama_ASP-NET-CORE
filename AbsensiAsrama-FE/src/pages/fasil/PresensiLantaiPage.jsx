@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Check, X, Search, Filter, RotateCcw, UserCheck, AlertCircle, Clock } from "lucide-react";
+import { Check, X, Search, Filter, RotateCcw, UserCheck, AlertCircle, Clock, Download, Printer } from "lucide-react";
 import { getUsers, getPresensi, recordPresensi, getKamar, getGedung } from "../../services/api";
+import { downloadCSV, printOfficialDocument } from "../../utils/exportUtils";
+import { showToast } from "../../utils/toast";
 
 export default function PresensiLantaiPage({ user, sessionConfig, onOpenSessionModal }) {
   const [modalOpen, setModalOpen] = useState(false);
@@ -133,12 +135,12 @@ export default function PresensiLantaiPage({ user, sessionConfig, onOpenSessionM
   };
 
   const handleExportCSV = () => {
-    if (filteredAttendance.length === 0) {
-      alert("Tidak ada data presensi lantai untuk diunduh.");
+    if (filteredList.length === 0) {
+      showToast("Tidak ada data presensi lantai untuk diunduh.", "warning");
       return;
     }
     const headers = ["No", "Kamar", "Nama Penghuni", "NIM", "Jenis Kelamin", "Waktu Absen", "Radius", "Status Presensi", "Keterangan"];
-    const rows = filteredAttendance.map((item, idx) => [
+    const rows = filteredList.map((item, idx) => [
       idx + 1,
       item.room,
       item.name,
@@ -150,15 +152,16 @@ export default function PresensiLantaiPage({ user, sessionConfig, onOpenSessionM
       item.keterangan
     ]);
     downloadCSV(`Rekap_Presensi_Lantai_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+    showToast("Rekap presensi lantai berhasil diunduh.", "success");
   };
 
   const handlePrintPDF = () => {
-    if (filteredAttendance.length === 0) {
-      alert("Tidak ada data presensi lantai untuk dicetak.");
+    if (filteredList.length === 0) {
+      showToast("Tidak ada data presensi lantai untuk dicetak.", "warning");
       return;
     }
     const headers = ["Kamar", "Nama Penghuni", "NIM", "Waktu", "Status", "Keterangan"];
-    const rows = filteredAttendance.map((item) => [
+    const rows = filteredList.map((item) => [
       item.room,
       item.name,
       item.nim,

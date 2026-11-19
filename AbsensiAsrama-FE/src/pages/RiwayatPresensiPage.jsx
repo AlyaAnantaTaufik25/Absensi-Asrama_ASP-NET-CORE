@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import {
   Calendar as CalendarIcon,
   Download,
+  Printer,
   Search,
   CheckCircle2,
   MapPin,
@@ -15,6 +16,7 @@ import {
 } from "lucide-react";
 import { getPresensi } from "../services/api";
 import { showToast } from "../utils/toast";
+import { downloadCSV, printOfficialDocument } from "../utils/exportUtils";
 
 export default function RiwayatPresensiPage({ user }) {
   const [searchQuery, setSearchQuery] = useState("");
@@ -276,9 +278,10 @@ export default function RiwayatPresensiPage({ user }) {
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
           <button
-            onClick={() => showToast("Mengunduh rekap riwayat presensi (PDF/Excel)...", "info")}
+            type="button"
+            onClick={handleExportCSV}
             style={{
               backgroundColor: "#ffffff",
               border: "1px solid #e5e5ea",
@@ -296,7 +299,29 @@ export default function RiwayatPresensiPage({ user }) {
             }}
           >
             <Download size={15} color="#007aff" />
-            <span>Unduh Laporan</span>
+            <span>Unduh Rekap (.csv)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handlePrintPDF}
+            style={{
+              backgroundColor: "#f2f2f7",
+              border: "1px solid #e5e5ea",
+              color: "#1c1c1e",
+              fontWeight: "600",
+              fontSize: "13px",
+              padding: "9px 16px",
+              borderRadius: "12px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "7px",
+              cursor: "pointer",
+              transition: "background-color 0.15s ease"
+            }}
+          >
+            <Printer size={15} color="#007aff" />
+            <span>Cetak PDF</span>
           </button>
         </div>
       </div>
