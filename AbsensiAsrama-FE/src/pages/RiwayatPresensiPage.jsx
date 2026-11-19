@@ -215,7 +215,7 @@ export default function RiwayatPresensiPage({ user }) {
         { label: "Nama Mahasiswa", value: user?.displayName || user?.name || "Alya Ananta" },
         { label: "NIM / ID", value: user?.nim || "2311523005" },
         { label: "Gedung Asrama / Kamar", value: `${user?.building || "Asrama Putri"} · ${user?.room || "Kamar 302"}` },
-        { label: "Ringkasan Kehadiran", value: `${countHadir} Sesi Hadir · ${countIzin} Izin · ${countAlpha} Alpha` }
+        { label: "Ringkasan Kehadiran", value: `${totalHadirStat} Sesi Hadir · ${totalIzinStat} Izin · ${totalAlphaStat} Alpha` }
       ],
       headers,
       rows,
