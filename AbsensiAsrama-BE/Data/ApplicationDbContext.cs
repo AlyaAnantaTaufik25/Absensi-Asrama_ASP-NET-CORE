@@ -152,6 +152,18 @@ public class ApplicationDbContext : DbContext
             entity.Property(g => g.IdUser)
                 .HasColumnName("id_user");
 
+            entity.Property(g => g.Latitude)
+                .HasColumnName("latitude")
+                .IsRequired(false);
+
+            entity.Property(g => g.Longitude)
+                .HasColumnName("longitude")
+                .IsRequired(false);
+
+            entity.Property(g => g.Radius)
+                .HasColumnName("radius")
+                .HasDefaultValue(150);
+
             entity.HasOne<User>()
                 .WithMany()
                 .HasForeignKey(g => g.IdUser)

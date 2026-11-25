@@ -13,18 +13,34 @@ import "./App.css";
 
 function App() {
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem("mynava_user");
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
 
   const handleLogin = (userData) => {
     setUser(userData);
+    try {
+      localStorage.setItem("mynava_user", JSON.stringify(userData));
+    } catch {}
   };
 
   const handleUpdateUser = (updatedUser) => {
     setUser(updatedUser);
+    try {
+      localStorage.setItem("mynava_user", JSON.stringify(updatedUser));
+    } catch {}
   };
 
   const handleLogout = () => {
     setUser(null);
+    try {
+      localStorage.removeItem("mynava_user");
+    } catch {}
     setActiveTab("dashboard");
   };
 

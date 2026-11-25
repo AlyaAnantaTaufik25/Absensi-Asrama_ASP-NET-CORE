@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Check, X, Search, Filter, RotateCcw, UserCheck, AlertCircle, Clock, Download, Printer } from "lucide-react";
-import { getUsers, getPresensi, recordPresensi, getKamar, getGedung } from "../../services/api";
-import { downloadCSV, printOfficialDocument } from "../../utils/exportUtils";
+import { Check, X, Search, Filter, RotateCcw, UserCheck, AlertCircle, Clock } from "lucide-react";
+import { getUsers, getPresensi, recordPresensi, getKamar, getGedung, updatePresensiStatus } from "../../services/api";
 import { showToast } from "../../utils/toast";
+import { downloadCSV, printOfficialDocument } from "../../utils/exportUtils";
 
 export default function PresensiLantaiPage({ user, sessionConfig, onOpenSessionModal }) {
   const [modalOpen, setModalOpen] = useState(false);
@@ -88,6 +88,7 @@ export default function PresensiLantaiPage({ user, sessionConfig, onOpenSessionM
   const countHadir = attendanceList.filter((a) => a.status === "Hadir").length;
   const countIzin = attendanceList.filter((a) => a.status === "Izin" || a.status === "Sakit").length;
   const countBelum = attendanceList.filter((a) => a.status === "Belum presensi").length;
+  const countAlpha = attendanceList.filter((a) => a.status === "Alpha").length;
 
   // Unique floors for dropdown
   const uniqueFloors = useMemo(() => {
@@ -116,6 +117,8 @@ export default function PresensiLantaiPage({ user, sessionConfig, onOpenSessionM
           matchesStatus = item.status === "Izin" || item.status === "Sakit";
         } else if (filterStatus === "belum") {
           matchesStatus = item.status === "Belum presensi";
+        } else if (filterStatus === "alpha") {
+          matchesStatus = item.status === "Alpha";
         }
       }
 
@@ -152,7 +155,6 @@ export default function PresensiLantaiPage({ user, sessionConfig, onOpenSessionM
       item.keterangan
     ]);
     downloadCSV(`Rekap_Presensi_Lantai_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
-    showToast("Rekap presensi lantai berhasil diunduh.", "success");
   };
 
   const handlePrintPDF = () => {
@@ -202,13 +204,21 @@ export default function PresensiLantaiPage({ user, sessionConfig, onOpenSessionM
 
     if (selectedStudent.idUser) {
       try {
-        await recordPresensi({
-          idUser: selectedStudent.idUser,
-          status: manualStatus,
-          keterangan: manualNote || "Verifikasi manual oleh Fasilitator"
-        });
+        // Jika ada idPresensi (presensi sudah ada), gunakan updatePresensiStatus
+        // Jika belum ada, gunakan recordPresensi untuk membuat baru
+        if (selectedStudent.idPresensi) {
+          await updatePresensiStatus(selectedStudent.idPresensi, manualStatus, manualNote || "Verifikasi manual oleh Fasilitator");
+        } else {
+          await recordPresensi({
+            idUser: selectedStudent.idUser,
+            status: manualStatus,
+            keterangan: manualNote || "Verifikasi manual oleh Fasilitator"
+          });
+        }
+        showToast(`Status presensi ${selectedStudent.name} diubah ke "${manualStatus}"`, "success");
       } catch (err) {
         console.warn("Gagal menyimpan presensi manual:", err);
+        showToast("Gagal menyimpan presensi. Coba lagi.", "error");
       }
     }
 
@@ -292,6 +302,15 @@ export default function PresensiLantaiPage({ user, sessionConfig, onOpenSessionM
             </div>
             <div style={{ fontSize: "20px", fontWeight: "700", color: "#ff9500", marginTop: "2px" }}>
               {countBelum}
+            </div>
+          </div>
+          <div style={{ width: "1px", height: "26px", backgroundColor: "#e5e5ea" }} />
+          <div style={{ textAlign: "center", minWidth: "55px" }}>
+            <div style={{ fontSize: "11px", color: "#8e8e93", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+              Alpha
+            </div>
+            <div style={{ fontSize: "20px", fontWeight: "700", color: "#ff3b30", marginTop: "2px" }}>
+              {countAlpha}
             </div>
           </div>
         </div>
@@ -446,6 +465,7 @@ export default function PresensiLantaiPage({ user, sessionConfig, onOpenSessionM
               <option value="semua">Semua Status</option>
               <option value="hadir">Hadir</option>
               <option value="izin">Izin / Sakit</option>
+              <option value="alpha">Alpha</option>
               <option value="belum">Belum Presensi</option>
             </select>
           </div>
@@ -568,6 +588,12 @@ export default function PresensiLantaiPage({ user, sessionConfig, onOpenSessionM
                   } else if (row.status === "Izin" || row.status === "Sakit") {
                     badgeBg = "rgba(0, 122, 255, 0.12)";
                     badgeColor = "#007aff";
+                  } else if (row.status === "Alpha") {
+                    badgeBg = "rgba(255, 59, 48, 0.12)";
+                    badgeColor = "#ff3b30";
+                  } else if (row.status === "Terlambat") {
+                    badgeBg = "rgba(255, 59, 48, 0.08)";
+                    badgeColor = "#c0392b";
                   } else if (row.status === "Belum presensi") {
                     badgeBg = "rgba(255, 149, 0, 0.12)";
                     badgeColor = "#ff9500";
@@ -751,7 +777,7 @@ export default function PresensiLantaiPage({ user, sessionConfig, onOpenSessionM
                   Status Kehadiran
                 </label>
                 <div style={{ display: "flex", gap: "8px" }}>
-                  {["Hadir", "Izin", "Sakit"].map((st) => (
+                  {["Hadir", "Izin", "Sakit", "Alpha"].map((st) => (
                     <button
                       key={st}
                       type="button"

@@ -806,6 +806,54 @@ export async function deleteEvent(idEvent) {
   return { success: true };
 }
 
+/**
+ * Cek sisa kuota izin penghuni per semester
+ */
+export async function getKuotaIzin(nim) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/perizinan/kuota/${nim}`);
+    if (res.ok) return await res.json();
+  } catch (err) {
+    console.warn("Gagal cek kuota izin:", err);
+  }
+  return { kuotaMaksimal: 6, kuotaTerpakai: 0, kuotaSisa: 6 };
+}
+
+/**
+ * Update status presensi oleh fasilitator
+ */
+export async function updatePresensiStatus(idPresensi, status, keterangan) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/presensi/${idPresensi}/status`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status, keterangan })
+    });
+    if (res.ok) return await res.json();
+  } catch (err) {
+    console.warn("Gagal update status presensi:", err);
+  }
+  return { success: false };
+}
+
+/**
+ * Submit izin dengan response body (mendukung error kuota)
+ */
+export async function submitIzinWithResponse(payload) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/perizinan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    return { ok: res.ok, status: res.status, data };
+  } catch (err) {
+    console.warn("Gagal submit izin:", err);
+    return { ok: false, status: 0, data: { message: "Tidak dapat terhubung ke server." } };
+  }
+}
+
 
 
 

@@ -466,7 +466,7 @@ export default function MasterDataPage() {
             margin: "0 0 4px 0"
           }}
         >
-          Master Data Asrama
+          Data Gedung Asrama
         </h1>
         <p style={{ fontSize: "14px", color: "#8e8e93", margin: 0 }}>
           Kelola data gedung, penugasan fasilitator pengelola, struktur lantai, dan kamar asrama.

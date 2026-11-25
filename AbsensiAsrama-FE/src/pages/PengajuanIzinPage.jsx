@@ -18,7 +18,7 @@ import {
   Check,
   AlertCircle
 } from "lucide-react";
-import { submitIzin, getPerizinan, uploadIzinFile } from "../services/api";
+import { submitIzin, getPerizinan, uploadIzinFile, getKuotaIzin, submitIzinWithResponse } from "../services/api";
 import { showToast } from "../utils/toast";
 import { downloadCSV, printOfficialDocument } from "../utils/exportUtils";
 
@@ -27,6 +27,9 @@ export default function PengajuanIzinPage({ user }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("Semua");
   const [statusFilter, setStatusFilter] = useState("Semua");
+
+  // Kuota Izin
+  const [kuotaInfo, setKuotaInfo] = useState({ kuotaMaksimal: 6, kuotaTerpakai: 0, kuotaSisa: 6 });
 
   // Form State
   const [jenisIzin, setJenisIzin] = useState("sakit");
@@ -52,7 +55,13 @@ export default function PengajuanIzinPage({ user }) {
     async function loadIzin() {
       setIsLoading(true);
       try {
-        const data = await getPerizinan();
+        const [data, kuota] = await Promise.all([
+          getPerizinan(),
+          user?.nim ? getKuotaIzin(user.nim) : Promise.resolve({ kuotaMaksimal: 6, kuotaTerpakai: 0, kuotaSisa: 6 })
+        ]);
+        if (kuota && typeof kuota.kuotaSisa === "number") {
+          setKuotaInfo(kuota);
+        }
         if (Array.isArray(data)) {
           const userIzin = user?.nim ? data.filter((d) => d.nim === user.nim) : data;
           setIzinList(
@@ -109,12 +118,19 @@ export default function PengajuanIzinPage({ user }) {
     }
 
     try {
-      await submitIzin({
+      const result = await submitIzinWithResponse({
         nim: user?.nim || "2311523005",
         tanggal: startDate ? new Date(startDate) : new Date(),
         alasan: `${jenisIzin === "sakit" ? "Sakit: " : "Izin: "}${reason}`,
         fileBukti: finalFileName
       });
+
+      if (!result.ok) {
+        const msg = result.data?.message || result.data?.error || "Gagal mengajukan izin.";
+        showToast(msg, "error");
+        setIsSubmittingForm(false);
+        return;
+      }
 
       const freshData = await getPerizinan();
       if (Array.isArray(freshData)) {
@@ -139,15 +155,21 @@ export default function PengajuanIzinPage({ user }) {
           }))
         );
       }
+      // Refresh kuota
+      if (user?.nim) {
+        const kuota = await getKuotaIzin(user.nim);
+        if (kuota && typeof kuota.kuotaSisa === "number") setKuotaInfo(kuota);
+      }
+      showToast("Permohonan izin berhasil diajukan!", "success");
     } catch (err) {
       console.warn("Gagal simpan izin ke backend:", err);
+      showToast("Gagal mengajukan izin. Coba lagi.", "error");
     } finally {
       setIsSubmittingForm(false);
       setShowModal(false);
       setReason("");
       setAttachedFile(null);
       setSelectedRawFile(null);
-      showToast("Permohonan izin berhasil diajukan!", "success");
     }
   };
 
@@ -158,8 +180,15 @@ export default function PengajuanIzinPage({ user }) {
       item.dokumen.toLowerCase().includes(searchQuery.toLowerCase());
     const matchCategory =
       categoryFilter === "Semua" || item.jenis.toLowerCase() === categoryFilter.toLowerCase();
-    const matchStatus =
-      statusFilter === "Semua" || item.status.toLowerCase().includes(statusFilter.toLowerCase());
+    
+    let matchStatus = true;
+    if (statusFilter !== "Semua") {
+      const st = (item.status || "").toLowerCase();
+      if (statusFilter === "Disetujui") matchStatus = st.includes("setuju");
+      else if (statusFilter === "Menunggu") matchStatus = st.includes("menunggu") || st.includes("tinjau") || st.includes("pending");
+      else if (statusFilter === "Ditolak") matchStatus = st.includes("tolak") || st.includes("batal");
+    }
+
     return matchSearch && matchCategory && matchStatus;
   });
 
@@ -291,7 +320,50 @@ export default function PengajuanIzinPage({ user }) {
         </div>
       </div>
 
-      {/* 2. Top Summary Stat Widgets (Murni Berdasarkan Data Riil Database - Tanpa Kuota) */}
+      {/* 2. Banner Kuota Izin Semester */}
+      {(() => {
+        const sisa = kuotaInfo.kuotaSisa;
+        const terpakai = kuotaInfo.kuotaTerpakai;
+        const maks = kuotaInfo.kuotaMaksimal;
+        const pct = Math.round((terpakai / maks) * 100);
+        const warna = sisa <= 1 ? "#ff3b30" : sisa <= 3 ? "#ff9500" : "#34c759";
+        return (
+          <div style={{
+            backgroundColor: sisa <= 1 ? "#fff5f5" : sisa <= 3 ? "#fffbf0" : "#f0fff4",
+            borderRadius: "16px",
+            border: `1px solid ${sisa <= 1 ? "#ffcdd2" : sisa <= 3 ? "#ffe0a0" : "#b7ebc0"}`,
+            padding: "16px 20px",
+            display: "flex",
+            alignItems: "center",
+            gap: "16px",
+            flexWrap: "wrap"
+          }}>
+            <div style={{ flex: "1 1 200px" }}>
+              <div style={{ fontSize: "11px", fontWeight: "600", color: "#8e8e93", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "4px" }}>
+                KUOTA IZIN SEMESTER INI
+              </div>
+              <div style={{ fontSize: "15px", fontWeight: "600", color: "#1c1c1e" }}>
+                <span style={{ color: warna, fontSize: "22px", fontWeight: "700" }}>{sisa}</span>
+                <span style={{ color: "#8e8e93", fontSize: "13px" }}> / {maks} sisa</span>
+                &nbsp;·&nbsp;
+                <span style={{ color: "#8e8e93", fontSize: "13px" }}>{terpakai} terpakai</span>
+              </div>
+            </div>
+            <div style={{ flex: "2 1 300px" }}>
+              <div style={{ width: "100%", height: "8px", backgroundColor: "#e5e5ea", borderRadius: "9999px", overflow: "hidden" }}>
+                <div style={{ width: `${pct}%`, height: "100%", backgroundColor: warna, borderRadius: "9999px", transition: "width 0.4s ease" }} />
+              </div>
+              <div style={{ fontSize: "12px", color: "#8e8e93", marginTop: "6px" }}>
+                {sisa === 0 ? "⚠️ Kuota izin semester ini sudah habis. Hubungi fasilitator untuk klarifikasi." :
+                 sisa <= 2 ? `⚠️ Hanya tersisa ${sisa} kuota izin. Gunakan dengan bijak.` :
+                 `Kuota izin tersedia hingga akhir semester.`}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* 3. Top Summary Stat Widgets (Murni Berdasarkan Data Riil Database - Tanpa Kuota) */}
       <div
         style={{
           display: "grid",
@@ -498,6 +570,28 @@ export default function PengajuanIzinPage({ user }) {
               <option value="Sakit">Sakit</option>
               <option value="Izin">Izin</option>
             </select>
+
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              style={{
+                height: "38px",
+                padding: "0 14px",
+                borderRadius: "10px",
+                border: "1px solid #e5e5ea",
+                backgroundColor: "#ffffff",
+                fontSize: "12.5px",
+                fontWeight: "500",
+                color: "#1c1c1e",
+                outline: "none",
+                cursor: "pointer"
+              }}
+            >
+              <option value="Semua">Semua Status</option>
+              <option value="Menunggu">Menunggu Review</option>
+              <option value="Disetujui">Disetujui</option>
+              <option value="Ditolak">Ditolak</option>
+            </select>
           </div>
         </div>
 
@@ -604,22 +698,54 @@ export default function PengajuanIzinPage({ user }) {
 
                     {/* Status Pill */}
                     <td style={{ padding: "14px" }}>
-                      <span
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "5px",
-                          backgroundColor: "rgba(52, 199, 89, 0.12)",
-                          color: "#34c759",
-                          padding: "4px 10px",
-                          borderRadius: "20px",
-                          fontSize: "11.5px",
-                          fontWeight: "600"
-                        }}
-                      >
-                        <CheckCircle2 size={13} color="#34c759" />
-                        Disetujui
-                      </span>
+                      {(() => {
+                        const rawStatus = (item.status || "Menunggu").toLowerCase();
+                        const isApproved = rawStatus.includes("setuju");
+                        const isRejected = rawStatus.includes("tolak") || rawStatus.includes("batal");
+
+                        const bg = isApproved
+                          ? "rgba(52, 199, 89, 0.12)"
+                          : isRejected
+                          ? "rgba(255, 59, 48, 0.12)"
+                          : "rgba(255, 149, 0, 0.12)";
+
+                        const color = isApproved
+                          ? "#34c759"
+                          : isRejected
+                          ? "#ff3b30"
+                          : "#ff9500";
+
+                        const label = isApproved
+                          ? "Disetujui"
+                          : isRejected
+                          ? "Ditolak"
+                          : "Menunggu Review";
+
+                        return (
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "5px",
+                              backgroundColor: bg,
+                              color: color,
+                              padding: "4px 10px",
+                              borderRadius: "20px",
+                              fontSize: "11.5px",
+                              fontWeight: "600"
+                            }}
+                          >
+                            {isApproved ? (
+                              <CheckCircle2 size={13} color={color} />
+                            ) : isRejected ? (
+                              <X size={13} color={color} />
+                            ) : (
+                              <Clock size={13} color={color} />
+                            )}
+                            {label}
+                          </span>
+                        );
+                      })()}
                     </td>
                   </tr>
                 ))

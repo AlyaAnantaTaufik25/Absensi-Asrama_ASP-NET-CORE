@@ -268,6 +268,29 @@ app.MapGet("/api/presensi", async (ApplicationDbContext db) =>
     return Results.Ok(list);
 });
 
+// Endpoint: Fasilitator mengubah status presensi penghuni (Hadir / Izin / Sakit / Alpha)
+app.MapPut("/api/presensi/{id:int}/status", async (int id, UpdatePresensiStatusRequest req, ApplicationDbContext db) =>
+{
+    var presensi = await db.Presensis.FindAsync(id);
+    if (presensi == null) return Results.NotFound(new { message = "Data presensi tidak ditemukan." });
+
+    var statusValid = new[] { "Hadir", "Izin", "Sakit", "Alpha", "Terlambat" };
+    if (!string.IsNullOrWhiteSpace(req.Status) && statusValid.Contains(req.Status.Trim()))
+    {
+        presensi.Status = req.Status.Trim();
+    }
+    else
+    {
+        return Results.BadRequest(new { message = $"Status tidak valid. Pilihan: {string.Join(", ", statusValid)}." });
+    }
+
+    if (!string.IsNullOrWhiteSpace(req.Keterangan))
+        presensi.Keterangan = req.Keterangan.Trim();
+
+    await db.SaveChangesAsync();
+    return Results.Ok(new { success = true, message = $"Status presensi berhasil diubah menjadi {presensi.Status}.", presensi });
+});
+
 // -------------------------------------------------
 // Endpoint Rekapitulasi Presensi Berdasarkan Role & Gedung
 // Mendukung pemisahan role (penghuni, fasil, admin) & filter 1 gedung penuh untuk fasil
@@ -442,22 +465,140 @@ app.MapGet("/api/gedung/fasil/{userId:int}", async (int userId, ApplicationDbCon
     });
 });
 
+// -------------------------------------------------
+// Helper: Rumus Haversine – menghitung jarak (meter) antara dua titik koordinat
+// -------------------------------------------------
+static double HitungJarakHaversine(double lat1, double lon1, double lat2, double lon2)
+{
+    const double R = 6371000; // Radius bumi dalam meter
+    var phi1 = lat1 * Math.PI / 180;
+    var phi2 = lat2 * Math.PI / 180;
+    var dPhi = (lat2 - lat1) * Math.PI / 180;
+    var dLambda = (lon2 - lon1) * Math.PI / 180;
+
+    var a = Math.Sin(dPhi / 2) * Math.Sin(dPhi / 2)
+          + Math.Cos(phi1) * Math.Cos(phi2)
+          * Math.Sin(dLambda / 2) * Math.Sin(dLambda / 2);
+    var c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
+    return R * c; // jarak dalam meter
+}
+
 app.MapPost("/api/presensi", async (CreatePresensiRequest req, ApplicationDbContext db) =>
 {
+    if (req.IdUser <= 0)
+        return Results.BadRequest(new { success = false, message = "IdUser tidak valid." });
+
+    var user = await db.Users.FindAsync(req.IdUser);
+    if (user == null)
+        return Results.NotFound(new { success = false, message = "Pengguna tidak ditemukan." });
+
+    // ----- Validasi Geofencing (radius 150 meter dengan Rumus Haversine) -----
+    bool lokasiValid = false;
+    double jarakMeter = 0;
+    string namaGedungTerdekat = "-";
+    int radiusKonfigurasi = 150; // radius default dalam meter
+
+    if (req.Latitude.HasValue && req.Longitude.HasValue)
+    {
+        // Ambil semua gedung yang memiliki koordinat terdefinisi
+        var semuaGedung = await db.Gedungs.ToListAsync();
+
+        // Cari gedung yang diassign untuk penghuni ini (lewat kamar -> gedung)
+        Gedung? gedungPenghuni = null;
+        if (!string.IsNullOrWhiteSpace(user.NomorKamar))
+        {
+            var kamarPenghuni = await db.Kamars.FirstOrDefaultAsync(k => k.NoKamar == user.NomorKamar);
+            if (kamarPenghuni != null)
+                gedungPenghuni = semuaGedung.FirstOrDefault(g => g.IdGedung == kamarPenghuni.IdGedung);
+        }
+
+        // Jika gedung penghuni memiliki koordinat valid, gunakan itu; jika tidak, cek semua gedung
+        var gedungUntukValidasi = gedungPenghuni != null && gedungPenghuni.Latitude.HasValue && gedungPenghuni.Longitude.HasValue
+            ? new List<Gedung> { gedungPenghuni }
+            : semuaGedung.Where(g => g.Latitude.HasValue && g.Longitude.HasValue).ToList();
+
+        foreach (var gedung in gedungUntukValidasi)
+        {
+            double jarak = HitungJarakHaversine(
+                req.Latitude.Value, req.Longitude.Value,
+                gedung.Latitude!.Value, gedung.Longitude!.Value
+            );
+            int radius = gedung.Radius > 0 ? gedung.Radius : radiusKonfigurasi;
+
+            if (jarak <= radius)
+            {
+                lokasiValid = true;
+                jarakMeter = Math.Round(jarak, 1);
+                namaGedungTerdekat = gedung.NamaGedung;
+                break;
+            }
+
+            // Simpan jarak terdekat untuk pesan error
+            if (jarakMeter == 0 || jarak < jarakMeter)
+            {
+                jarakMeter = Math.Round(jarak, 1);
+                namaGedungTerdekat = gedung.NamaGedung;
+            }
+        }
+
+        // Jika tidak ada gedung dengan koordinat → izinkan presensi (fallback toleran)
+        if (!gedungUntukValidasi.Any())
+            lokasiValid = true;
+
+        // Tolak presensi jika di luar radius
+        if (!lokasiValid)
+        {
+            return Results.Json(new
+            {
+                success = false,
+                lokasiValid = false,
+                jarakMeter,
+                namaGedung = namaGedungTerdekat,
+                message = $"Lokasi Anda berada di luar zona asrama ({namaGedungTerdekat}). " +
+                          $"Jarak saat ini: {jarakMeter:F0} meter (batas radius: {radiusKonfigurasi} meter). " +
+                          "Pastikan Anda berada di dalam area gedung asrama."
+            }, statusCode: 422);
+        }
+    }
+    else
+    {
+        // Koordinat tidak dikirim – tidak bisa validasi, tolak presensi
+        return Results.BadRequest(new
+        {
+            success = false,
+            message = "Koordinat lokasi (latitude & longitude) wajib disertakan untuk presensi."
+        });
+    }
+
+    // ----- Simpan data presensi ke database -----
+    var statusAkhir = req.Status ?? "Hadir";
+    var keteranganAkhir = string.IsNullOrWhiteSpace(req.Keterangan)
+        ? $"Presensi dari {namaGedungTerdekat} (jarak: {jarakMeter:F0}m)"
+        : req.Keterangan;
+
     var presensi = new Presensi
     {
         IdUser = req.IdUser,
         Waktu = DateTime.Now,
         Tanggal = DateTime.Today,
-        Status = req.Status ?? "Hadir",
+        Status = statusAkhir,
         Latitude = req.Latitude,
         Longitude = req.Longitude,
-        Keterangan = req.Keterangan,
+        Keterangan = keteranganAkhir,
         FotoWajah = req.FotoWajah
     };
     db.Presensis.Add(presensi);
     await db.SaveChangesAsync();
-    return Results.Created($"/api/presensi/{presensi.IdPresensi}", presensi);
+
+    return Results.Created($"/api/presensi/{presensi.IdPresensi}", new
+    {
+        success = true,
+        lokasiValid = true,
+        jarakMeter,
+        namaGedung = namaGedungTerdekat,
+        message = "Presensi berhasil dicatat.",
+        presensi
+    });
 });
 
 // -------------------------------------------------
@@ -540,7 +681,14 @@ app.MapPost("/api/gedung", async (CreateGedungRequest req, ApplicationDbContext 
         }
     }
 
-    var gedung = new Gedung { NamaGedung = req.NamaGedung.Trim(), IdUser = assignedUserId };
+    var gedung = new Gedung
+    {
+        NamaGedung = req.NamaGedung.Trim(),
+        IdUser = assignedUserId,
+        Latitude = req.Latitude,
+        Longitude = req.Longitude,
+        Radius = req.Radius.GetValueOrDefault(150)
+    };
     db.Gedungs.Add(gedung);
     await db.SaveChangesAsync();
 
@@ -581,6 +729,9 @@ app.MapPut("/api/gedung/{id:int}", async (int id, CreateGedungRequest req, Appli
     var gedung = await db.Gedungs.FindAsync(id);
     if (gedung == null) return Results.NotFound(new { message = "Gedung tidak ditemukan." });
     if (!string.IsNullOrWhiteSpace(req.NamaGedung)) gedung.NamaGedung = req.NamaGedung;
+    if (req.Latitude.HasValue) gedung.Latitude = req.Latitude;
+    if (req.Longitude.HasValue) gedung.Longitude = req.Longitude;
+    if (req.Radius.HasValue && req.Radius.Value > 0) gedung.Radius = req.Radius.Value;
     if (req.IdUser.HasValue && req.IdUser.Value > 0)
     {
         gedung.IdUser = req.IdUser.Value;
@@ -807,6 +958,40 @@ app.MapGet("/api/perizinan", async (ApplicationDbContext db) =>
     return Results.Ok(list);
 });
 
+// Endpoint: Cek sisa kuota izin penghuni per semester
+app.MapGet("/api/perizinan/kuota/{nim}", async (string nim, ApplicationDbContext db) =>
+{
+    const int KuotaIzinPerSemester = 6;
+    var now = DateTime.Now;
+    DateTime semesterStart, semesterEnd;
+    if (now.Month >= 2 && now.Month <= 7)
+    {
+        semesterStart = new DateTime(now.Year, 2, 1);
+        semesterEnd = new DateTime(now.Year, 7, 31);
+    }
+    else
+    {
+        semesterStart = new DateTime(now.Month >= 8 ? now.Year : now.Year - 1, 8, 1);
+        semesterEnd = new DateTime(now.Month >= 8 ? now.Year + 1 : now.Year, 1, 31);
+    }
+
+    var izinDisetujui = await db.Perizinans.CountAsync(p =>
+        p.Nim == nim &&
+        p.Tanggal >= semesterStart &&
+        p.Tanggal <= semesterEnd &&
+        p.Status == "Disetujui");
+
+    return Results.Ok(new
+    {
+        nim,
+        kuotaMaksimal = KuotaIzinPerSemester,
+        kuotaTerpakai = izinDisetujui,
+        kuotaSisa = KuotaIzinPerSemester - izinDisetujui,
+        semesterStart,
+        semesterEnd
+    });
+});
+
 app.MapPost("/api/perizinan/upload", async (HttpRequest request, IWebHostEnvironment env) =>
 {
     if (!request.HasFormContentType)
@@ -837,20 +1022,59 @@ app.MapPost("/api/perizinan/upload", async (HttpRequest request, IWebHostEnviron
 
 app.MapPost("/api/perizinan", async (CreatePerizinanRequest req, ApplicationDbContext db) =>
 {
-    var nim = req.Nim;
-    var userExists = await db.Users.AnyAsync(u => u.Nim == nim);
-    if (!userExists)
+    // Temukan user berdasarkan NIM
+    var user = await db.Users.FirstOrDefaultAsync(u => u.Nim == req.Nim);
+    if (user == null)
     {
+        // Fallback: cari penghuni pertama jika NIM tidak ditemukan
         var fallbackUser = await db.Users.FirstOrDefaultAsync(u => u.Role == "penghuni" || u.Role == "mahasiswa");
-        if (fallbackUser != null)
+        if (fallbackUser == null)
+            return Results.NotFound(new { success = false, message = "Pengguna tidak ditemukan." });
+        user = fallbackUser;
+    }
+
+    // ----- Validasi Kuota Izin Maksimal 6 per Semester -----
+    const int KuotaIzinPerSemester = 6;
+
+    // Tentukan rentang semester: Februari–Juli (Genap) atau Agustus–Januari (Ganjil)
+    var now = DateTime.Now;
+    DateTime semesterStart, semesterEnd;
+    if (now.Month >= 2 && now.Month <= 7)
+    {
+        // Semester Genap: Februari – Juli
+        semesterStart = new DateTime(now.Year, 2, 1);
+        semesterEnd = new DateTime(now.Year, 7, 31);
+    }
+    else
+    {
+        // Semester Ganjil: Agustus – Januari (tahun berikutnya)
+        semesterStart = new DateTime(now.Month >= 8 ? now.Year : now.Year - 1, 8, 1);
+        semesterEnd = new DateTime(now.Month >= 8 ? now.Year + 1 : now.Year, 1, 31);
+    }
+
+    // Hitung jumlah perizinan yang sudah disetujui dalam semester ini
+    var izinDisetujuiSemester = await db.Perizinans.CountAsync(p =>
+        p.Nim == user.Nim &&
+        p.Tanggal >= semesterStart &&
+        p.Tanggal <= semesterEnd &&
+        p.Status == "Disetujui");
+
+    if (izinDisetujuiSemester >= KuotaIzinPerSemester)
+    {
+        return Results.Json(new
         {
-            nim = fallbackUser.Nim;
-        }
+            success = false,
+            kuotaHabis = true,
+            kuotaTerpakai = izinDisetujuiSemester,
+            kuotaMaksimal = KuotaIzinPerSemester,
+            message = $"Kuota izin Anda sudah habis ({izinDisetujuiSemester}/{KuotaIzinPerSemester} izin terpakai semester ini). " +
+                      "Pengajuan izin baru tidak dapat diterima."
+        }, statusCode: 422);
     }
 
     var izin = new Perizinan
     {
-        Nim = nim,
+        Nim = user.Nim,
         Tanggal = req.Tanggal != default ? req.Tanggal : DateTime.Today,
         Alasan = req.Alasan,
         FileBukti = req.FileBukti,
@@ -858,7 +1082,16 @@ app.MapPost("/api/perizinan", async (CreatePerizinanRequest req, ApplicationDbCo
     };
     db.Perizinans.Add(izin);
     await db.SaveChangesAsync();
-    return Results.Created($"/api/perizinan/{izin.IdIzin}", izin);
+
+    return Results.Created($"/api/perizinan/{izin.IdIzin}", new
+    {
+        success = true,
+        message = "Pengajuan izin berhasil dikirim dan menunggu persetujuan fasilitator.",
+        kuotaTerpakai = izinDisetujuiSemester,
+        kuotaMaksimal = KuotaIzinPerSemester,
+        kuotaSisa = KuotaIzinPerSemester - izinDisetujuiSemester,
+        izin
+    });
 });
 
 app.MapPut("/api/perizinan/{id:int}/status", async (int id, UpdatePerizinanStatusRequest req, ApplicationDbContext db) =>
@@ -866,12 +1099,57 @@ app.MapPut("/api/perizinan/{id:int}/status", async (int id, UpdatePerizinanStatu
     var izin = await db.Perizinans.FindAsync(id);
     if (izin == null) return Results.NotFound(new { message = "Data perizinan tidak ditemukan." });
 
+    var statusLama = izin.Status;
+
     if (!string.IsNullOrWhiteSpace(req.Status))
     {
         izin.Status = req.Status.Trim();
     }
+
+    // ----- Jika fasilitator menyetujui izin, otomatis ubah status presensi penghuni -----
+    // pada tanggal izin tersebut menjadi "Izin" atau "Sakit" (menggantikan Alpha / Hadir)
+    if (string.Equals(izin.Status, "disetujui", StringComparison.OrdinalIgnoreCase))
+    {
+        // Cari user berdasarkan NIM
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Nim == izin.Nim);
+        if (user != null)
+        {
+            var statusPresensi = (izin.Alasan != null && izin.Alasan.ToLower().Contains("sakit")) ? "Sakit" : "Izin";
+
+            // Cek apakah sudah ada record presensi pada tanggal izin
+            var presensiExisting = await db.Presensis.FirstOrDefaultAsync(p =>
+                p.IdUser == user.IdUser &&
+                p.Tanggal.Date == izin.Tanggal.Date);
+
+            if (presensiExisting != null)
+            {
+                // Update status presensi yang ada menjadi "Sakit" atau "Izin"
+                presensiExisting.Status = statusPresensi;
+                presensiExisting.Keterangan = $"Disetujui fasilitator – {izin.Alasan}";
+            }
+            else
+            {
+                // Buat record presensi baru dengan status Izin / Sakit
+                db.Presensis.Add(new Presensi
+                {
+                    IdUser = user.IdUser,
+                    Tanggal = izin.Tanggal.Date,
+                    Waktu = izin.Tanggal.Date.AddHours(7),
+                    Status = statusPresensi,
+                    Keterangan = $"Disetujui fasilitator – {izin.Alasan}"
+                });
+            }
+        }
+    }
+
     await db.SaveChangesAsync();
-    return Results.Ok(new { success = true, message = $"Status izin berhasil diperbarui menjadi {izin.Status}.", izin });
+    return Results.Ok(new
+    {
+        success = true,
+        message = $"Status izin berhasil diperbarui menjadi {izin.Status}." +
+                  (izin.Status == "Disetujui" ? " Status presensi pada tanggal izin otomatis diubah menjadi Izin." : ""),
+        izin
+    });
 });
 
 // -------------------------------------------------
@@ -1117,7 +1395,53 @@ try
 {
     using var scope = app.Services.CreateScope();
     var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+    // Pastikan kolom penting ada di database sebelum query EF Core dijalankan
+    try { await dbContext.Database.ExecuteSqlRawAsync("ALTER TABLE `gedung` ADD COLUMN `latitude` DOUBLE NULL"); } catch { }
+    try { await dbContext.Database.ExecuteSqlRawAsync("ALTER TABLE `gedung` ADD COLUMN `longitude` DOUBLE NULL"); } catch { }
+    try { await dbContext.Database.ExecuteSqlRawAsync("ALTER TABLE `gedung` ADD COLUMN `radius` INT NOT NULL DEFAULT 150"); } catch { }
+    try { await dbContext.Database.ExecuteSqlRawAsync("ALTER TABLE `perizinan` ADD COLUMN `status` VARCHAR(50) DEFAULT 'Menunggu'"); } catch { }
+
     await dbContext.Database.ExecuteSqlRawAsync("UPDATE user SET role = 'penghuni' WHERE role = 'mahasiswa' OR role IS NULL OR role = ''");
+
+    // Sinkronkan seluruh perizinan yang telah disetujui ke dalam tabel presensi
+    try
+    {
+        var approvedIzinList = await dbContext.Perizinans
+            .Where(p => p.Status.ToLower() == "disetujui")
+            .ToListAsync();
+
+        foreach (var iz in approvedIzinList)
+        {
+            var usr = await dbContext.Users.FirstOrDefaultAsync(u => u.Nim == iz.Nim);
+            if (usr != null)
+            {
+                var presensiExist = await dbContext.Presensis.FirstOrDefaultAsync(p =>
+                    p.IdUser == usr.IdUser && p.Tanggal.Date == iz.Tanggal.Date);
+
+                var statusPresensi = (iz.Alasan != null && iz.Alasan.ToLower().Contains("sakit")) ? "Sakit" : "Izin";
+
+                if (presensiExist != null)
+                {
+                    presensiExist.Status = statusPresensi;
+                    presensiExist.Keterangan = $"Disetujui Fasilitator: {iz.Alasan}";
+                }
+                else
+                {
+                    dbContext.Presensis.Add(new Presensi
+                    {
+                        IdUser = usr.IdUser,
+                        Tanggal = iz.Tanggal.Date,
+                        Waktu = iz.Tanggal.Date.AddHours(7),
+                        Status = statusPresensi,
+                        Keterangan = $"Disetujui Fasilitator: {iz.Alasan}"
+                    });
+                }
+            }
+        }
+        await dbContext.SaveChangesAsync();
+    }
+    catch { }
 
     // Pastikan user demo ada
     var fasilUser = await dbContext.Users.FirstOrDefaultAsync(u => u.Role == "fasil") ?? await dbContext.Users.FirstOrDefaultAsync();
@@ -1361,10 +1685,6 @@ try
             );
             await dbContext.SaveChangesAsync();
         }
-
-        try {
-            await dbContext.Database.ExecuteSqlRawAsync("ALTER TABLE `perizinan` ADD COLUMN `status` VARCHAR(50) DEFAULT 'Menunggu'");
-        } catch { }
     }
     catch { }
 }
@@ -1446,6 +1766,7 @@ public record UpdateUserRequest(
     string? Role);
 public record UpdateSessionSettingRequest(string? SubuhStart, string? SubuhEnd, string? MalamStart, string? MalamEnd, string? UpdatedBy);
 public record UpdatePerizinanStatusRequest(string Status);
+public record UpdatePresensiStatusRequest(string Status, string? Keterangan);
 public record CreateBukuTamuRequest(string NamaTamu, string? Relasi, string NamaPenghuni, string? WaktuMasuk, string? Catatan);
 public record CreateKeluarMasukRequest(string NamaSantri, string Kamar, string Alasan, string? JamKeluar);
 public record CreateLaporanKejadianRequest(string Judul, string Tipe, string Lokasi, string? TingkatKeparahan, string? Tanggal, string Kronologi);
